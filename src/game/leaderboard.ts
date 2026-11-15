@@ -13,10 +13,14 @@ import {
 } from './firebase';
 import { validatePlayerName } from './wordFilter';
 
+import { PlayerStats, getLevelInfo } from './progression';
+import { isValidAvatarUrl } from './avatar';
+
 export interface PlayerProfile {
   username: string;
   tag?: string; // only present if rolled
   avatarLetter: string; // single-letter monogram
+  avatarUrl?: string; // optional compressed base64 profile picture
   hasChosenName: boolean;
 }
 
@@ -27,8 +31,19 @@ export interface LeaderboardEntry {
   tag?: string;
   score: number;
   avatarLetter: string;
+  avatarUrl?: string;
   tier: 'Grandmaster' | 'Master' | 'Diamond' | 'Platinum' | 'Gold' | 'Silver' | 'Bronze';
   isCurrentUser?: boolean;
+  xp?: number;
+  level?: number;
+  totalPlaytimeSec?: number;
+  longestSessionSec?: number;
+  gamesPlayed?: number;
+  totalLinesCleared?: number;
+  bestCombo?: number;
+  dailyStreak?: number;
+  achievementsCount?: number;
+  activeTheme?: string;
 }
 
 const NAME_PREFIXES = [
@@ -126,9 +141,14 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Saves or updates player's record in local fallback and pushes to the shared database
+ * Saves or updates player's record and public stats in local fallback and shared database
  */
-export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore: number): Promise<void> {
+export async function savePlayerToLeaderboard(
+  profile: PlayerProfile,
+  bestScore: number,
+  stats?: PlayerStats,
+  activeTheme?: string
+): Promise<void> {
   const playerId = getPlayerId();
   let username = (profile?.username || 'Player').trim() || 'Player';
   
@@ -139,9 +159,11 @@ export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore:
   }
 
   const letter = (profile?.avatarLetter || username.charAt(0) || 'P').toUpperCase();
+  const avatarUrl = isValidAvatarUrl(profile?.avatarUrl) ? profile.avatarUrl : undefined;
   const tag = profile?.tag ? profile.tag.trim() : undefined;
   const score = Math.max(0, bestScore);
   const tier = getTierFromScore(score);
+  const levelInfo = stats ? getLevelInfo(stats.xp) : undefined;
 
   // 1. Local storage backup
   if (typeof window !== 'undefined') {
@@ -152,7 +174,18 @@ export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore:
         tag,
         score,
         avatarLetter: letter,
+        avatarUrl,
         tier,
+        xp: stats?.xp,
+        level: levelInfo?.level,
+        totalPlaytimeSec: stats?.totalPlaytimeSec,
+        longestSessionSec: stats?.longestSessionSec,
+        gamesPlayed: stats?.gamesPlayed,
+        totalLinesCleared: stats?.totalLinesCleared,
+        bestCombo: stats?.bestCombo,
+        dailyStreak: stats?.dailyStreak,
+        achievementsCount: stats?.unlockedAchievements?.length,
+        activeTheme,
       };
       localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify([entry]));
     } catch {
@@ -167,8 +200,23 @@ export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore:
     tag,
     score,
     avatarLetter: letter,
+    avatarUrl,
     tier,
     updatedAt: Date.now(),
+    ...(stats
+      ? {
+          xp: stats.xp,
+          level: levelInfo?.level || 1,
+          totalPlaytimeSec: stats.totalPlaytimeSec,
+          longestSessionSec: stats.longestSessionSec,
+          gamesPlayed: stats.gamesPlayed,
+          totalLinesCleared: stats.totalLinesCleared,
+          bestCombo: stats.bestCombo,
+          dailyStreak: stats.dailyStreak,
+          achievementsCount: stats.unlockedAchievements.length,
+        }
+      : {}),
+    ...(activeTheme ? { activeTheme } : {}),
   };
 
   await savePlayerRecordToFirestore(firestoreRecord);
@@ -185,6 +233,21 @@ export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore:
           tag,
           score,
           avatarLetter: letter,
+          avatarUrl,
+          ...(stats
+            ? {
+                xp: stats.xp,
+                level: levelInfo?.level || 1,
+                totalPlaytimeSec: stats.totalPlaytimeSec,
+                longestSessionSec: stats.longestSessionSec,
+                gamesPlayed: stats.gamesPlayed,
+                totalLinesCleared: stats.totalLinesCleared,
+                bestCombo: stats.bestCombo,
+                dailyStreak: stats.dailyStreak,
+                achievementsCount: stats.unlockedAchievements.length,
+              }
+            : {}),
+          ...(activeTheme ? { activeTheme } : {}),
         }),
       });
     } catch {
@@ -197,34 +260,116 @@ export async function savePlayerToLeaderboard(profile: PlayerProfile, bestScore:
  * Default sample records if database is completely new
  */
 const DEFAULT_COMMUNITY_BENCHMARKS: Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>[] = [
-  { id: 'bot_1', username: 'NovaBlade', tag: '9421', score: 12450, avatarLetter: 'N', tier: 'Master' },
-  { id: 'bot_2', username: 'CyberGhost', tag: '8114', score: 8690, avatarLetter: 'C', tier: 'Diamond' },
-  { id: 'bot_3', username: 'VortexPilot', tag: '3720', score: 5420, avatarLetter: 'V', tier: 'Platinum' },
-  { id: 'bot_4', username: 'PulseHunter', tag: '6105', score: 3180, avatarLetter: 'P', tier: 'Platinum' },
-  { id: 'bot_5', username: 'EchoDrifter', tag: '2289', score: 1850, avatarLetter: 'E', tier: 'Silver' },
+  {
+    id: 'bot_1',
+    username: 'NovaBlade',
+    tag: '9421',
+    score: 12450,
+    avatarLetter: 'N',
+    tier: 'Master',
+    xp: 4850,
+    level: 7,
+    totalPlaytimeSec: 5420,
+    longestSessionSec: 940,
+    gamesPlayed: 42,
+    totalLinesCleared: 390,
+    bestCombo: 6,
+    dailyStreak: 9,
+    achievementsCount: 8,
+    activeTheme: 'prism-aurora',
+  },
+  {
+    id: 'bot_2',
+    username: 'CyberGhost',
+    tag: '8114',
+    score: 8690,
+    avatarLetter: 'C',
+    tier: 'Diamond',
+    xp: 3120,
+    level: 6,
+    totalPlaytimeSec: 3890,
+    longestSessionSec: 710,
+    gamesPlayed: 31,
+    totalLinesCleared: 275,
+    bestCombo: 5,
+    dailyStreak: 5,
+    achievementsCount: 7,
+    activeTheme: 'midas-gold',
+  },
+  {
+    id: 'bot_3',
+    username: 'VortexPilot',
+    tag: '3720',
+    score: 5420,
+    avatarLetter: 'V',
+    tier: 'Platinum',
+    xp: 1850,
+    level: 4,
+    totalPlaytimeSec: 2310,
+    longestSessionSec: 530,
+    gamesPlayed: 22,
+    totalLinesCleared: 168,
+    bestCombo: 4,
+    dailyStreak: 4,
+    achievementsCount: 5,
+    activeTheme: 'crimson-inferno',
+  },
+  {
+    id: 'bot_4',
+    username: 'PulseHunter',
+    tag: '6105',
+    score: 3180,
+    avatarLetter: 'P',
+    tier: 'Platinum',
+    xp: 980,
+    level: 3,
+    totalPlaytimeSec: 1420,
+    longestSessionSec: 380,
+    gamesPlayed: 15,
+    totalLinesCleared: 102,
+    bestCombo: 3,
+    dailyStreak: 2,
+    achievementsCount: 4,
+    activeTheme: 'solar-flare',
+  },
+  {
+    id: 'bot_5',
+    username: 'EchoDrifter',
+    tag: '2289',
+    score: 1850,
+    avatarLetter: 'E',
+    tier: 'Silver',
+    xp: 440,
+    level: 2,
+    totalPlaytimeSec: 760,
+    longestSessionSec: 245,
+    gamesPlayed: 9,
+    totalLinesCleared: 54,
+    bestCombo: 2,
+    dailyStreak: 1,
+    achievementsCount: 2,
+    activeTheme: 'emerald-matrix',
+  },
 ];
 
 /**
- * Fetches the live shared leaderboard containing all players' records
+ * Fetches the live shared leaderboard containing all players' records & public stats
  */
 export async function fetchSharedLeaderboard(
   userProfile: PlayerProfile,
-  userBestScore: number
+  userBestScore: number,
+  userStats?: PlayerStats,
+  activeTheme?: string
 ): Promise<{ list: LeaderboardEntry[]; userRank: number; userEntry: LeaderboardEntry }> {
   const currentId = getPlayerId();
   const safeUsername = (userProfile?.username || 'Player').trim() || 'Player';
   const safeTag = userProfile?.tag ? userProfile.tag.trim() : undefined;
   const safeLetter = (userProfile?.avatarLetter || safeUsername.charAt(0) || 'P').toUpperCase();
+  const safeAvatarUrl = isValidAvatarUrl(userProfile?.avatarUrl) ? userProfile.avatarUrl : undefined;
   const safeScore = Math.max(0, userBestScore || 0);
+  const userLevel = userStats ? getLevelInfo(userStats.xp).level : 1;
 
-  let rawEntries: Array<{
-    id: string;
-    username: string;
-    tag?: string;
-    score: number;
-    avatarLetter: string;
-    tier: LeaderboardEntry['tier'];
-  }> = [];
+  let rawEntries: Array<Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>> = [];
 
   // 1. Fetch from Firebase Firestore (Global shared database)
   try {
@@ -239,7 +384,18 @@ export async function fetchSharedLeaderboard(
           tag: e.tag,
           score: e.score,
           avatarLetter: (e.avatarLetter || safeName.charAt(0) || 'P').toUpperCase(),
+          avatarUrl: isValidAvatarUrl(e.avatarUrl) ? e.avatarUrl : undefined,
           tier: e.tier,
+          xp: e.xp,
+          level: e.level,
+          totalPlaytimeSec: e.totalPlaytimeSec,
+          longestSessionSec: e.longestSessionSec,
+          gamesPlayed: e.gamesPlayed,
+          totalLinesCleared: e.totalLinesCleared,
+          bestCombo: e.bestCombo,
+          dailyStreak: e.dailyStreak,
+          achievementsCount: e.achievementsCount,
+          activeTheme: e.activeTheme,
         };
       });
     }
@@ -262,56 +418,110 @@ export async function fetchSharedLeaderboard(
     }
   }
 
-    // 3. Fallback benchmarks only if zero Firestore records exist
-    if (rawEntries.length === 0) {
-      rawEntries = [...DEFAULT_COMMUNITY_BENCHMARKS];
-    }
+  // 3. Fallback benchmarks only if zero Firestore records exist
+  if (rawEntries.length === 0) {
+    rawEntries = [...DEFAULT_COMMUNITY_BENCHMARKS];
+  }
 
-    // 4. Ensure current user's profile is updated/included
-    const existingUserIndex = rawEntries.findIndex(
-      (e) => e.id === currentId || (e.username.toLowerCase() === safeUsername.toLowerCase() && e.tag === safeTag)
-    );
+  // 4. Match ONLY by unique player ID so accounts with identical/differently-cased usernames never collide
+  const existingUserIndex = rawEntries.findIndex((e) => e.id === currentId);
 
-    let shouldSyncToFirestore = false;
-    if (existingUserIndex >= 0) {
-      if (safeScore > rawEntries[existingUserIndex].score) {
-        rawEntries[existingUserIndex].score = safeScore;
-        rawEntries[existingUserIndex].tier = getTierFromScore(safeScore);
-        rawEntries[existingUserIndex].username = safeUsername;
-        rawEntries[existingUserIndex].tag = safeTag;
-        rawEntries[existingUserIndex].avatarLetter = safeLetter;
-        shouldSyncToFirestore = true;
-      }
-    } else {
-      rawEntries.push({
-        id: currentId,
-        username: safeUsername,
-        tag: safeTag,
-        score: safeScore,
-        avatarLetter: safeLetter,
-        tier: getTierFromScore(safeScore),
-      });
-      if (safeScore > 0) {
-        shouldSyncToFirestore = true;
-      }
+  let shouldSyncToFirestore = false;
+  if (existingUserIndex >= 0) {
+    const existing = rawEntries[existingUserIndex];
+    const bestOfScores = Math.max(safeScore, existing.score);
+    if (
+      safeScore > existing.score ||
+      safeAvatarUrl !== existing.avatarUrl ||
+      safeUsername !== existing.username ||
+      (userStats && (userStats.xp > (existing.xp || 0) || userStats.totalPlaytimeSec > (existing.totalPlaytimeSec || 0)))
+    ) {
+      shouldSyncToFirestore = true;
     }
+    rawEntries[existingUserIndex] = {
+      ...existing,
+      score: bestOfScores,
+      tier: getTierFromScore(bestOfScores),
+      username: safeUsername,
+      tag: safeTag,
+      avatarLetter: safeLetter,
+      avatarUrl: safeAvatarUrl,
+      ...(userStats
+        ? {
+            xp: Math.max(userStats.xp, existing.xp || 0),
+            level: Math.max(userLevel, existing.level || 1),
+            totalPlaytimeSec: Math.max(userStats.totalPlaytimeSec, existing.totalPlaytimeSec || 0),
+            longestSessionSec: Math.max(userStats.longestSessionSec, existing.longestSessionSec || 0),
+            gamesPlayed: Math.max(userStats.gamesPlayed, existing.gamesPlayed || 0),
+            totalLinesCleared: Math.max(userStats.totalLinesCleared, existing.totalLinesCleared || 0),
+            bestCombo: Math.max(userStats.bestCombo, existing.bestCombo || 0),
+            dailyStreak: Math.max(userStats.dailyStreak, existing.dailyStreak || 0),
+            achievementsCount: Math.max(
+              userStats.unlockedAchievements.length,
+              existing.achievementsCount || 0
+            ),
+          }
+        : {}),
+      ...(activeTheme ? { activeTheme } : {}),
+    };
+  } else {
+    rawEntries.push({
+      id: currentId,
+      username: safeUsername,
+      tag: safeTag,
+      score: safeScore,
+      avatarLetter: safeLetter,
+      avatarUrl: safeAvatarUrl,
+      tier: getTierFromScore(safeScore),
+      xp: userStats?.xp ?? 0,
+      level: userLevel,
+      totalPlaytimeSec: userStats?.totalPlaytimeSec ?? 0,
+      longestSessionSec: userStats?.longestSessionSec ?? 0,
+      gamesPlayed: userStats?.gamesPlayed ?? 0,
+      totalLinesCleared: userStats?.totalLinesCleared ?? 0,
+      bestCombo: userStats?.bestCombo ?? 0,
+      dailyStreak: userStats?.dailyStreak ?? 1,
+      achievementsCount: userStats?.unlockedAchievements.length ?? 0,
+      activeTheme,
+    });
+    if (safeScore > 0 || (userStats && userStats.xp > 0) || safeAvatarUrl) {
+      shouldSyncToFirestore = true;
+    }
+  }
 
-    if (shouldSyncToFirestore) {
-      savePlayerRecordToFirestore({
-        id: currentId,
-        username: safeUsername,
-        tag: safeTag,
-        score: safeScore,
-        avatarLetter: safeLetter,
-        tier: getTierFromScore(safeScore),
-        updatedAt: Date.now(),
-      }).catch(() => {});
-    }
+  if (shouldSyncToFirestore) {
+    savePlayerRecordToFirestore({
+      id: currentId,
+      username: safeUsername,
+      tag: safeTag,
+      score: Math.max(
+        safeScore,
+        rawEntries[existingUserIndex >= 0 ? existingUserIndex : rawEntries.length - 1]?.score || 0
+      ),
+      avatarLetter: safeLetter,
+      avatarUrl: safeAvatarUrl,
+      tier: getTierFromScore(safeScore),
+      updatedAt: Date.now(),
+      ...(userStats
+        ? {
+            xp: userStats.xp,
+            level: userLevel,
+            totalPlaytimeSec: userStats.totalPlaytimeSec,
+            longestSessionSec: userStats.longestSessionSec,
+            gamesPlayed: userStats.gamesPlayed,
+            totalLinesCleared: userStats.totalLinesCleared,
+            bestCombo: userStats.bestCombo,
+            dailyStreak: userStats.dailyStreak,
+            achievementsCount: userStats.unlockedAchievements.length,
+          }
+        : {}),
+      ...(activeTheme ? { activeTheme } : {}),
+    }).catch(() => {});
+  }
 
   // Re-sort by score descending
   rawEntries.sort((a, b) => b.score - a.score);
 
-  // Map into LeaderboardEntry with ranks and currentUser flags
   let userRank = 1;
   let userEntry: LeaderboardEntry = {
     id: currentId,
@@ -320,14 +530,26 @@ export async function fetchSharedLeaderboard(
     tag: safeTag,
     score: safeScore,
     avatarLetter: safeLetter,
+    avatarUrl: safeAvatarUrl,
     tier: getTierFromScore(safeScore),
     isCurrentUser: true,
+    xp: userStats?.xp ?? 0,
+    level: userLevel,
+    totalPlaytimeSec: userStats?.totalPlaytimeSec ?? 0,
+    longestSessionSec: userStats?.longestSessionSec ?? 0,
+    gamesPlayed: userStats?.gamesPlayed ?? 0,
+    totalLinesCleared: userStats?.totalLinesCleared ?? 0,
+    bestCombo: userStats?.bestCombo ?? 0,
+    dailyStreak: userStats?.dailyStreak ?? 1,
+    achievementsCount: userStats?.unlockedAchievements.length ?? 0,
+    activeTheme,
   };
 
   const list: LeaderboardEntry[] = rawEntries.map((e, idx) => {
-    const isUser = e.id === currentId || (e.username.toLowerCase() === safeUsername.toLowerCase() && e.tag === safeTag);
+    const isUser = e.id === currentId;
     const entryItem: LeaderboardEntry = {
       ...e,
+      level: e.level ?? (e.xp !== undefined ? getLevelInfo(e.xp).level : 1),
       rank: idx + 1,
       isCurrentUser: isUser,
     };
@@ -350,13 +572,17 @@ export async function fetchSharedLeaderboard(
  */
 export function buildLeaderboard(
   userProfile: PlayerProfile,
-  userBestScore: number
+  userBestScore: number,
+  userStats?: PlayerStats,
+  activeTheme?: string
 ): { list: LeaderboardEntry[]; userRank: number; userEntry: LeaderboardEntry } {
   const currentId = getPlayerId();
   const safeUsername = (userProfile?.username || 'Player').trim() || 'Player';
   const safeTag = userProfile?.tag ? userProfile.tag.trim() : undefined;
   const safeLetter = (userProfile?.avatarLetter || safeUsername.charAt(0) || 'P').toUpperCase();
+  const safeAvatarUrl = isValidAvatarUrl(userProfile?.avatarUrl) ? userProfile.avatarUrl : undefined;
   const safeScore = Math.max(0, userBestScore || 0);
+  const userLevel = userStats ? getLevelInfo(userStats.xp).level : 1;
 
   const userEntry: LeaderboardEntry = {
     id: currentId,
@@ -365,8 +591,19 @@ export function buildLeaderboard(
     tag: safeTag,
     score: safeScore,
     avatarLetter: safeLetter,
+    avatarUrl: safeAvatarUrl,
     tier: getTierFromScore(safeScore),
     isCurrentUser: true,
+    xp: userStats?.xp ?? 0,
+    level: userLevel,
+    totalPlaytimeSec: userStats?.totalPlaytimeSec ?? 0,
+    longestSessionSec: userStats?.longestSessionSec ?? 0,
+    gamesPlayed: userStats?.gamesPlayed ?? 0,
+    totalLinesCleared: userStats?.totalLinesCleared ?? 0,
+    bestCombo: userStats?.bestCombo ?? 0,
+    dailyStreak: userStats?.dailyStreak ?? 1,
+    achievementsCount: userStats?.unlockedAchievements.length ?? 0,
+    activeTheme,
   };
 
   // Combine with benchmarks
@@ -379,6 +616,7 @@ export function buildLeaderboard(
     if (isUser) userRank = idx + 1;
     return {
       ...e,
+      level: e.level ?? (e.xp !== undefined ? getLevelInfo(e.xp).level : 1),
       rank: idx + 1,
       isCurrentUser: isUser,
     };

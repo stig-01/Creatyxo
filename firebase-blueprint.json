@@ -2,16 +2,19 @@
   "entities": {
     "LeaderboardEntry": {
       "title": "LeaderboardEntry",
-      "description": "A player score entry on the global shared leaderboard",
+      "description": "A player score and public profile statistics entry on the global shared leaderboard",
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique player ID"
+          "description": "Unique player ID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "username": {
           "type": "string",
           "description": "Display name of the player",
+          "minLength": 1,
           "maxLength": 30
         },
         "tag": {
@@ -28,6 +31,11 @@
           "description": "Single uppercase letter monogram",
           "maxLength": 2
         },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Optional compressed data URL for custom profile picture",
+          "maxLength": 24000
+        },
         "tier": {
           "type": "string",
           "description": "Rank tier based on score",
@@ -35,16 +43,114 @@
         },
         "updatedAt": {
           "type": "number",
-          "description": "Epoch timestamp in milliseconds when score was saved"
+          "description": "Epoch timestamp in milliseconds when record was saved"
+        },
+        "xp": {
+          "type": "number",
+          "description": "Total experience points earned"
+        },
+        "level": {
+          "type": "number",
+          "description": "Player level derived from XP"
+        },
+        "totalPlaytimeSec": {
+          "type": "number",
+          "description": "Total active gameplay duration in seconds"
+        },
+        "longestSessionSec": {
+          "type": "number",
+          "description": "Longest single game session duration in seconds"
+        },
+        "gamesPlayed": {
+          "type": "number",
+          "description": "Total completed or played games"
+        },
+        "totalLinesCleared": {
+          "type": "number",
+          "description": "Cumulative rows and columns cleared"
+        },
+        "bestCombo": {
+          "type": "number",
+          "description": "Highest consecutive combo multiplier achieved"
+        },
+        "dailyStreak": {
+          "type": "number",
+          "description": "Current daily streak count in days"
+        },
+        "achievementsCount": {
+          "type": "number",
+          "description": "Number of unlocked achievements"
+        },
+        "activeTheme": {
+          "type": "string",
+          "description": "Currently equipped visual theme ID",
+          "maxLength": 32
         }
       },
       "required": ["id", "username", "score", "avatarLetter", "tier", "updatedAt"]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "Friend request or accepted friendship between two player IDs",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Deterministic sorted pair ID (playerA__playerB)",
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "users": {
+          "type": "array",
+          "description": "Sorted pair of the two player IDs"
+        },
+        "fromId": {
+          "type": "string",
+          "description": "Player ID that initiated the friend request",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "toId": {
+          "type": "string",
+          "description": "Player ID that receives the friend request",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fromUsername": {
+          "type": "string",
+          "description": "Display username of sender",
+          "maxLength": 30
+        },
+        "toUsername": {
+          "type": "string",
+          "description": "Display username of recipient",
+          "maxLength": 30
+        },
+        "status": {
+          "type": "string",
+          "description": "Current friend request status",
+          "enum": ["pending", "accepted", "declined"]
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Epoch timestamp when request was created"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Epoch timestamp when status last changed"
+        }
+      },
+      "required": ["id", "users", "fromId", "toId", "fromUsername", "toUsername", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/leaderboard/{playerId}": {
       "schema": "LeaderboardEntry",
-      "description": "Global shared leaderboard entries keyed by unique player ID"
+      "description": "Global shared leaderboard and public player profile statistics keyed by unique player ID"
+    },
+    "/friendships/{friendshipId}": {
+      "schema": "Friendship",
+      "description": "Mutual friend requests and accepted friendships between players"
     }
   }
 }

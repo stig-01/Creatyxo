@@ -3,13 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlayerProfile, generateRandomName } from '../game/leaderboard';
 import { validatePlayerName } from '../game/wordFilter';
+import { GameTheme } from '../game/themes';
+import { resizeAvatarImage } from '../game/avatar';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface NameSetupModalProps {
   currentProfile: PlayerProfile;
   isOpen: boolean;
+  activeTheme: GameTheme;
   onSave: (profile: PlayerProfile) => void;
   onClose?: () => void;
   isInitialSetup?: boolean;
@@ -18,17 +22,29 @@ interface NameSetupModalProps {
 export const NameSetupModal: React.FC<NameSetupModalProps> = ({
   currentProfile,
   isOpen,
+  activeTheme,
   onSave,
   onClose,
   isInitialSetup = false,
 }) => {
   const [username, setUsername] = useState(currentProfile.username || '');
   const [tag, setTag] = useState(currentProfile.tag || '');
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(currentProfile.avatarUrl);
   const [error, setError] = useState('');
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setUsername(currentProfile.username || '');
+      setTag(currentProfile.tag || '');
+      setAvatarUrl(currentProfile.avatarUrl);
+      setError('');
+    }
+  }, [isOpen, currentProfile]);
 
   if (!isOpen) return null;
 
-  // When rolling a name: NUMBERS APPEAR!
   const handleRollRandom = () => {
     const random = generateRandomName();
     setUsername(random.username);
@@ -39,9 +55,26 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
   const handleUsernameChange = (val: string) => {
     const sanitized = val.replace(/[^a-zA-Z0-9_\-\s]/g, '');
     setUsername(sanitized);
-    // If the user manually edits/types their own name, clear the tag number!
     setTag('');
     setError('');
+  };
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsProcessingPhoto(true);
+    setError('');
+    try {
+      const compressed = await resizeAvatarImage(file);
+      setAvatarUrl(compressed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import profile image.');
+    } finally {
+      setIsProcessingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const handleSave = () => {
@@ -55,7 +88,6 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
       return;
     }
 
-    // Deterministic forbidden word check (100% offline, zero AI APIs)
     const check = validatePlayerName(trimmed);
     if (!check.isValid) {
       setError(check.reason || 'This name is not allowed. Please choose another.');
@@ -64,19 +96,20 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
 
     onSave({
       username: trimmed,
-      tag: tag.trim() || undefined, // Custom names have NO numbers!
+      tag: tag.trim() || undefined,
       avatarLetter: trimmed.charAt(0).toUpperCase() || 'P',
+      avatarUrl,
       hasChosenName: true,
     });
   };
 
   const handleSkip = () => {
-    // When skipping, assign a rolled name with numbers
     const random = generateRandomName();
     onSave({
       username: random.username,
       tag: random.tag,
       avatarLetter: random.username.charAt(0).toUpperCase(),
+      avatarUrl,
       hasChosenName: true,
     });
   };
@@ -84,23 +117,69 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
   const displayInitial = (username.trim().charAt(0) || 'P').toUpperCase();
 
   return (
-    <div className="fixed inset-[10px] z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-sm animate-fadeIn rounded-2xl overflow-hidden">
-      <div className="w-full max-w-sm bg-[#0c1220] border border-[#1b263d] rounded-2xl p-6 sm:p-7 shadow-2xl flex flex-col gap-4 sm:gap-5 text-center m-2">
-        {/* Header */}
-        <div className="flex flex-col items-center gap-2">
-          {/* Clean Monogram Circle */}
-          <div className="w-14 h-14 rounded-2xl bg-[#141d30] border border-[#233250] flex items-center justify-center text-xl font-black text-[#3debe0] font-['Orbitron',sans-serif] shadow-sm">
-            {displayInitial}
+    <div className="fixed inset-[10px] z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-sm animate-fadeIn rounded-2xl overflow-hidden">
+      <div
+        style={{
+          backgroundColor: activeTheme.cardBg,
+          borderColor: activeTheme.cardBorder,
+        }}
+        className="w-full max-w-sm max-h-full overflow-y-auto border rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 text-center m-1 custom-scrollbar"
+      >
+        {/* Header & Avatar Upload */}
+        <div className="flex flex-col items-center gap-2.5">
+          <PlayerAvatar
+            letter={displayInitial}
+            avatarUrl={avatarUrl}
+            sizeClass="w-16 h-16"
+            textClass="text-xl"
+            roundedClass="rounded-2xl"
+            accentColor={activeTheme.accentHex}
+            bgColor={activeTheme.surfaceBg}
+            borderColor={activeTheme.accentHex}
+          />
+
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/*"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              disabled={isProcessingPhoto}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                margin: 0,
+                backgroundColor: activeTheme.surfaceBg,
+                borderColor: activeTheme.surfaceBorder,
+                color: activeTheme.accentHex,
+              }}
+              className="px-3 py-1.5 rounded-lg border text-[10px] font-bold font-['Orbitron',sans-serif] tracking-wider hover:brightness-110 cursor-pointer active:scale-95 transition-all"
+            >
+              {isProcessingPhoto ? 'PROCESSING...' : avatarUrl ? 'CHANGE PFP' : 'IMPORT PFP'}
+            </button>
+            {avatarUrl && (
+              <button
+                type="button"
+                onClick={() => setAvatarUrl(undefined)}
+                style={{ margin: 0 }}
+                className="px-2.5 py-1.5 rounded-lg bg-[#171d2c] border border-[#2a344d] text-[10px] font-bold text-slate-400 hover:text-rose-300 font-['Orbitron',sans-serif] cursor-pointer transition-colors"
+              >
+                REMOVE
+              </button>
+            )}
           </div>
 
-          <h2 className="text-lg font-bold text-white font-['Orbitron',sans-serif] tracking-wider mt-1">
-            {isInitialSetup ? 'WELCOME TO CREATYXO' : 'PLAYER SETTINGS'}
+          <h2 className="text-lg font-bold text-white font-['Orbitron',sans-serif] tracking-wider">
+            {isInitialSetup ? 'WELCOME TO CREATYXO' : 'EDIT NAME'}
           </h2>
 
-          <p className="text-xs text-slate-400 font-['Orbitron',sans-serif] max-w-[260px] leading-relaxed mt-1">
+          <p className="text-xs text-slate-400 font-['Orbitron',sans-serif] max-w-[260px] leading-relaxed">
             {isInitialSetup
-              ? 'Choose your player name. Rolling a random name includes a unique number tag.'
-              : 'Enter a custom name without numbers, or roll a random callsign.'}
+              ? 'Choose your player name & optional photo. Rolling a random name adds a tag.'
+              : 'Enter a custom name without numbers, or roll a random name.'}
           </p>
         </div>
 
@@ -117,13 +196,20 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
               onChange={(e) => handleUsernameChange(e.target.value)}
               maxLength={16}
               placeholder="e.g. Alex"
-              className="flex-1 bg-[#101625] border border-[#1d273f] rounded-xl px-4 py-3 text-sm font-bold text-white font-['Orbitron',sans-serif] focus:outline-none focus:border-[#3debe0]/70 transition-all placeholder:text-slate-600 placeholder:font-normal"
+              style={{
+                backgroundColor: activeTheme.surfaceBg,
+                borderColor: activeTheme.surfaceBorder,
+              }}
+              className="flex-1 border rounded-xl px-4 py-3 text-sm font-bold text-white font-['Orbitron',sans-serif] focus:outline-none transition-all placeholder:text-slate-600 placeholder:font-normal"
             />
 
-            {/* Tag only shown if rolled! */}
             {tag && (
               <div
-                className="bg-[#141b2e] border border-[#233250] rounded-xl px-3 py-3 text-xs font-bold text-slate-300 font-mono"
+                style={{
+                  backgroundColor: activeTheme.surfaceBg,
+                  borderColor: activeTheme.surfaceBorder,
+                }}
+                className="border rounded-xl px-3 py-3 text-xs font-bold text-slate-300 font-mono"
                 title="Number tag from random roll"
               >
                 #{tag}
@@ -137,7 +223,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
             </span>
           )}
 
-          <span className="text-[10px] text-slate-500 font-['Orbitron',sans-serif] mt-1">
+          <span className="text-[10px] text-slate-500 font-['Orbitron',sans-serif] mt-0.5">
             {tag
               ? 'Random name roll includes a number tag.'
               : 'Custom names have no number tag.'}
@@ -148,17 +234,28 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
         <button
           type="button"
           onClick={handleRollRandom}
-          className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border border-[#233250] hover:border-[#3debe0]/40 text-slate-200 hover:text-white text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer active:scale-95 m-1"
+          style={{
+            margin: 0,
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="btn-creatyxo w-full rounded-xl border text-slate-200 hover:text-white text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer active:scale-95"
         >
           ROLL RANDOM NAME
         </button>
 
-        {/* Action Buttons: 12px gap, at least 4px distance */}
-        <div className="flex flex-col gap-3 pt-1">
+        {/* Action Buttons */}
+        <div className="flex flex-col gap-2.5 pt-1">
           <button
             type="button"
             onClick={handleSave}
-            className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all shadow-[0_0_18px_rgba(61,235,224,0.35)] cursor-pointer m-1"
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.primaryBtnBg,
+              color: activeTheme.primaryBtnText,
+              boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
+            }}
+            className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
           >
             CONFIRM NAME
           </button>
@@ -167,7 +264,8 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
             <button
               type="button"
               onClick={handleSkip}
-              className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#141b2e]/60 border border-transparent hover:border-[#233250] text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer m-1"
+              style={{ margin: 0 }}
+              className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
             >
               SKIP FOR NOW
             </button>
@@ -176,7 +274,8 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#141b2e]/60 border border-transparent hover:border-[#233250] text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer m-1"
+                style={{ margin: 0 }}
+                className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
               >
                 CANCEL
               </button>

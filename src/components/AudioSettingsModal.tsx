@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { playSoundVolumePreview } from '../game/audio';
+import { GameTheme } from '../game/themes';
 
 interface AudioSettingsModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface AudioSettingsModalProps {
   hapticsEnabled: boolean;
   soundVolume: number; // 0.0 to 1.0
   musicVolume: number; // 0.0 to 1.0
+  activeTheme: GameTheme;
   onToggleSound: () => void;
   onToggleMusic: () => void;
   onToggleHaptics: () => void;
@@ -28,6 +30,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   hapticsEnabled,
   soundVolume,
   musicVolume,
+  activeTheme,
   onToggleSound,
   onToggleMusic,
   onToggleHaptics,
@@ -68,17 +71,31 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-[10px] z-50 flex items-center justify-center p-4 bg-[#070a11]/90 backdrop-blur-md animate-fadeIn select-none rounded-2xl overflow-hidden"
+      className="fixed inset-[10px] z-50 flex items-center justify-center p-3 sm:p-4 bg-[#070a11]/90 backdrop-blur-md animate-fadeIn select-none rounded-2xl overflow-hidden"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm bg-[#0c1220] border border-[#1b263d] rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-left m-2"
+        style={{
+          backgroundColor: activeTheme.cardBg,
+          borderColor: activeTheme.cardBorder,
+        }}
+        className="w-full max-w-sm max-h-full overflow-y-auto border rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 text-left m-1 custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#172238] pb-3">
+        <div
+          style={{ borderColor: activeTheme.surfaceBorder }}
+          className="flex items-center justify-between border-b pb-3"
+        >
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#142036] border border-[#233554] flex items-center justify-center text-[#3debe0]">
+            <div
+              style={{
+                backgroundColor: activeTheme.surfaceBg,
+                borderColor: activeTheme.surfaceBorder,
+                color: activeTheme.accentHex,
+              }}
+              className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+            >
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
               </svg>
@@ -97,17 +114,24 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close audio settings"
-            className="btn-creatyxo-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0 m-1"
+            style={{ margin: 0 }}
+            className="btn-creatyxo-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
           >
             ✕
           </button>
         </div>
 
         {/* Music Volume Slider Control */}
-        <div className="bg-[#101726] border border-[#19243a] rounded-xl p-3.5 flex flex-col gap-2.5">
+        <div
+          style={{
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="border rounded-xl p-3.5 flex flex-col gap-2.5"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[#3debe0]">
+              <span style={{ color: activeTheme.accentHex }}>
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                 </svg>
@@ -120,17 +144,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <button
               type="button"
               onClick={onToggleMusic}
-              className={`btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer m-1 ${
-                musicEnabled
-                  ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                  : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-              }`}
+              style={{
+                margin: 0,
+                backgroundColor: musicEnabled ? activeTheme.boardBg : '#181f2f',
+                borderColor: musicEnabled ? activeTheme.accentHex : '#25324b',
+                color: musicEnabled ? activeTheme.accentHex : '#64748b',
+              }}
+              className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer"
             >
               {musicEnabled ? 'ACTIVE' : 'MUTED'}
             </button>
           </div>
 
-          {/* Slider Row */}
           <div className="flex items-center gap-3">
             <input
               type="range"
@@ -139,20 +164,30 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               step="1"
               value={musicPercent}
               onChange={handleMusicSlider}
+              style={{ accentColor: activeTheme.accentHex }}
               className="cyber-slider flex-1"
               aria-label="Background music volume"
             />
-            <span className="text-xs font-black text-[#3debe0] font-['Orbitron',sans-serif] w-10 text-right tabular-nums">
+            <span
+              style={{ color: activeTheme.accentHex }}
+              className="text-xs font-black font-['Orbitron',sans-serif] w-10 text-right tabular-nums"
+            >
               {musicPercent}%
             </span>
           </div>
         </div>
 
         {/* Sound Effects Volume Slider Control */}
-        <div className="bg-[#101726] border border-[#19243a] rounded-xl p-3.5 flex flex-col gap-2.5">
+        <div
+          style={{
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="border rounded-xl p-3.5 flex flex-col gap-2.5"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[#3debe0]">
+              <span style={{ color: activeTheme.accentHex }}>
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
                 </svg>
@@ -165,17 +200,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <button
               type="button"
               onClick={onToggleSound}
-              className={`btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer m-1 ${
-                soundEnabled
-                  ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                  : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-              }`}
+              style={{
+                margin: 0,
+                backgroundColor: soundEnabled ? activeTheme.boardBg : '#181f2f',
+                borderColor: soundEnabled ? activeTheme.accentHex : '#25324b',
+                color: soundEnabled ? activeTheme.accentHex : '#64748b',
+              }}
+              className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer"
             >
               {soundEnabled ? 'ACTIVE' : 'MUTED'}
             </button>
           </div>
 
-          {/* Slider Row */}
           <div className="flex items-center gap-3">
             <input
               type="range"
@@ -184,19 +220,29 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               step="1"
               value={soundPercent}
               onChange={handleSoundSlider}
+              style={{ accentColor: activeTheme.accentHex }}
               className="cyber-slider flex-1"
               aria-label="Sound effects volume"
             />
-            <span className="text-xs font-black text-[#3debe0] font-['Orbitron',sans-serif] w-10 text-right tabular-nums">
+            <span
+              style={{ color: activeTheme.accentHex }}
+              className="text-xs font-black font-['Orbitron',sans-serif] w-10 text-right tabular-nums"
+            >
               {soundPercent}%
             </span>
           </div>
         </div>
 
         {/* Haptic Feedback Toggle */}
-        <div className="bg-[#101726] border border-[#19243a] rounded-xl p-3.5 flex items-center justify-between gap-3">
+        <div
+          style={{
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="border rounded-xl p-3.5 flex items-center justify-between gap-3"
+        >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[#3debe0] shrink-0">
+            <span style={{ color: activeTheme.accentHex }} className="shrink-0">
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                 <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
               </svg>
@@ -214,36 +260,45 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <button
             type="button"
             onClick={onToggleHaptics}
-            className={`btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer m-1 shrink-0 ${
-              hapticsEnabled
-                ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-            }`}
+            style={{
+              margin: 0,
+              backgroundColor: hapticsEnabled ? activeTheme.boardBg : '#181f2f',
+              borderColor: hapticsEnabled ? activeTheme.accentHex : '#25324b',
+              color: hapticsEnabled ? activeTheme.accentHex : '#64748b',
+            }}
+            className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer shrink-0"
           >
             {hapticsEnabled ? 'ACTIVE' : 'OFF'}
           </button>
         </div>
 
-        {/* Preset Quick Buttons: 12px gap, 14px 24px padding, 52px min-height */}
-        <div className="flex items-center justify-between gap-3 pt-1">
+        {/* Preset Quick Buttons */}
+        <div className="grid grid-cols-3 gap-2 pt-1">
           <button
             type="button"
             onClick={() => handleSetPreset('mute')}
-            className="btn-creatyxo flex-1 rounded-xl bg-[#141b2a] hover:bg-[#192236] border border-[#202b42] text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer m-1"
+            style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
+            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             MUTE ALL
           </button>
           <button
             type="button"
             onClick={() => handleSetPreset('balanced')}
-            className="btn-creatyxo flex-1 rounded-xl bg-[#141b2a] hover:bg-[#192236] border border-[#202b42] text-[10px] sm:text-xs font-bold text-slate-300 hover:text-[#3debe0] font-['Orbitron',sans-serif] transition-all cursor-pointer m-1"
+            style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
+            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-300 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             60% CHILL
           </button>
           <button
             type="button"
             onClick={() => handleSetPreset('max')}
-            className="btn-creatyxo flex-1 rounded-xl bg-[#141b2a] hover:bg-[#192236] border border-[#202b42] text-[10px] sm:text-xs font-bold text-[#3debe0] hover:bg-[#1c2e42] font-['Orbitron',sans-serif] transition-all cursor-pointer m-1"
+            style={{
+              margin: 0,
+              borderColor: activeTheme.surfaceBorder,
+              color: activeTheme.accentHex,
+            }}
+            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             100% MAX
           </button>
@@ -253,7 +308,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] shadow-[0_0_18px_rgba(61,235,224,0.35)] cursor-pointer mt-2 m-1 active:scale-95 transition-all"
+          style={{
+            margin: 0,
+            backgroundColor: activeTheme.primaryBtnBg,
+            color: activeTheme.primaryBtnText,
+            boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
+          }}
+          className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer mt-1 active:scale-95 transition-all"
         >
           CONFIRM & CLOSE
         </button>

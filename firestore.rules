@@ -6,24 +6,126 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidFriendshipId(id) {
+      return id is string && id.size() > 0 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidOptionalNonNegNumber(data, field, maxVal) {
+      return !(field in data) || (data[field] is number && data[field] >= 0 && data[field] <= maxVal);
+    }
+
+    function isValidLeaderboardEntry(data, playerId) {
+      return data.keys().hasAll(['id', 'username', 'score', 'avatarLetter', 'tier', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'username', 'tag', 'score', 'avatarLetter', 'avatarUrl', 'tier', 'updatedAt',
+          'xp', 'level', 'totalPlaytimeSec', 'longestSessionSec', 'gamesPlayed',
+          'totalLinesCleared', 'bestCombo', 'dailyStreak', 'achievementsCount', 'activeTheme'
+        ])
+        && data.id is string
+        && data.id == playerId
+        && data.username is string
+        && data.username.size() > 0
+        && data.username.size() <= 30
+        && (!('tag' in data) || data.tag == null || (data.tag is string && data.tag.size() <= 10))
+        && data.score is number
+        && data.score >= 0
+        && data.score <= 10000000
+        && data.avatarLetter is string
+        && data.avatarLetter.size() > 0
+        && data.avatarLetter.size() <= 2
+        && (!('avatarUrl' in data) || data.avatarUrl == null || (
+          data.avatarUrl is string
+          && data.avatarUrl.size() <= 24000
+          && data.avatarUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$')
+        ))
+        && data.tier in ['Grandmaster', 'Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze']
+        && data.updatedAt is number
+        && data.updatedAt >= 0
+        && isValidOptionalNonNegNumber(data, 'xp', 100000000)
+        && isValidOptionalNonNegNumber(data, 'level', 1000)
+        && isValidOptionalNonNegNumber(data, 'totalPlaytimeSec', 100000000)
+        && isValidOptionalNonNegNumber(data, 'longestSessionSec', 10000000)
+        && isValidOptionalNonNegNumber(data, 'gamesPlayed', 1000000)
+        && isValidOptionalNonNegNumber(data, 'totalLinesCleared', 10000000)
+        && isValidOptionalNonNegNumber(data, 'bestCombo', 1000)
+        && isValidOptionalNonNegNumber(data, 'dailyStreak', 10000)
+        && isValidOptionalNonNegNumber(data, 'achievementsCount', 100)
+        && (!('activeTheme' in data) || data.activeTheme == null || (data.activeTheme is string && data.activeTheme.size() <= 32));
+    }
+
+    function isValidFriendship(data, friendshipId) {
+      return data.keys().hasAll([
+          'id', 'users', 'fromId', 'toId', 'fromUsername', 'toUsername', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'users', 'fromId', 'toId', 'fromUsername', 'toUsername', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string
+        && data.id == friendshipId
+        && data.users is list
+        && data.users.size() == 2
+        && data.users[0] is string
+        && data.users[1] is string
+        && isValidId(data.fromId)
+        && isValidId(data.toId)
+        && data.fromId != data.toId
+        && data.fromId in data.users
+        && data.toId in data.users
+        && data.fromUsername is string
+        && data.fromUsername.size() > 0
+        && data.fromUsername.size() <= 30
+        && data.toUsername is string
+        && data.toUsername.size() > 0
+        && data.toUsername.size() <= 30
+        && data.status in ['pending', 'accepted', 'declined']
+        && data.createdAt is number
+        && data.createdAt >= 0
+        && data.updatedAt is number
+        && data.updatedAt >= 0;
+    }
+
     match /leaderboard/{playerId} {
-      // Allow everyone to read the global shared leaderboard
+      // Public leaderboard and public player profile statistics (no PII)
       allow read: if true;
 
-      // Allow players to submit or update their own record with validation
-      allow create, update: if request.resource.data.id is string
-        && request.resource.data.id == playerId
-        && request.resource.data.score is number
-        && request.resource.data.score >= 0
-        && request.resource.data.score <= 10000000
-        && request.resource.data.username is string
-        && request.resource.data.username.size() > 0
-        && request.resource.data.username.size() <= 30
-        && request.resource.data.avatarLetter is string
-        && request.resource.data.avatarLetter.size() <= 2
-        && request.resource.data.tier is string;
+      // Validate schema, bounds, and allowed keys on create/update
+      allow create, update: if isValidId(playerId)
+        && isValidLeaderboardEntry(incoming(), playerId);
 
       allow delete: if false;
+    }
+
+    match /friendships/{friendshipId} {
+      // Friend request queries & profile relationship status (no PII stored; writes strictly validated below)
+      allow get: if isValidFriendshipId(friendshipId);
+      allow list: if true;
+
+      allow create: if isValidFriendshipId(friendshipId)
+        && isValidFriendship(incoming(), friendshipId)
+        && incoming().status == 'pending';
+
+      allow update: if isValidFriendshipId(friendshipId)
+        && isValidFriendship(incoming(), friendshipId)
+        && incoming().id == existing().id
+        && incoming().users == existing().users
+        && incoming().fromId == existing().fromId
+        && incoming().toId == existing().toId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'fromUsername', 'toUsername']);
+
+      allow delete: if isValidFriendshipId(friendshipId);
     }
   }
 }

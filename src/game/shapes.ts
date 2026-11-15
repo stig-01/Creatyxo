@@ -630,12 +630,38 @@ export function placePieceOnGrid(
   return newGrid;
 }
 
+function gridHasEmptyCell(grid: GridState): boolean {
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < (grid[r]?.length || 0); c++) {
+      if (grid[r][c] === null) return true;
+    }
+  }
+  return false;
+}
+
+function ensureAtLeastOneFittingPiece(pieces: PieceShape[], workingGrid: GridState): PieceShape[] {
+  if (!gridHasEmptyCell(workingGrid)) return pieces;
+  if (pieces.some((p) => canPieceFitAnywhere(workingGrid, p))) {
+    return pieces;
+  }
+
+  const fixed = [...pieces];
+  const dotSavior = SAVIOR_SHAPES[0];
+  fixed[0] = {
+    name: dotSavior.name,
+    color: dotSavior.color,
+    matrix: [[1]],
+    id: makePieceId('savior'),
+  };
+  return fixed;
+}
+
 /**
  * Spawns 3 randomized pieces tailored to the active difficulty & board size.
  * CRITICAL GUARANTEE:
  * 1) No piece is ever larger than the board or mode limits.
  * 2) Tries to guarantee all 3 pieces can be placed simultaneously (or sequentially with line clears).
- * 3) Every single piece spawned in the tray is guaranteed to fit on the current board!
+ * 3) Whenever the board has at least 1 empty cell, spawned pieces are guaranteed to have a valid move.
  */
 export function getRandomPieces(
   count = 3,
@@ -667,7 +693,7 @@ export function getRandomPieces(
     }
 
     if (success && pieces.length === count) {
-      return pieces;
+      return ensureAtLeastOneFittingPiece(pieces, workingGrid);
     }
   }
 
@@ -692,7 +718,7 @@ export function getRandomPieces(
 
     // Also verify every spawned piece can at least fit on the initial workingGrid
     if (success && pieces.length === count && pieces.every((p) => canPieceFitAnywhere(workingGrid, p))) {
-      return pieces;
+      return ensureAtLeastOneFittingPiece(pieces, workingGrid);
     }
   }
 
@@ -751,5 +777,5 @@ export function getRandomPieces(
     );
   }
 
-  return guaranteedPieces;
+  return ensureAtLeastOneFittingPiece(guaranteedPieces, workingGrid);
 }

@@ -29,6 +29,7 @@ export type GridState = (BlockColor | null)[][];
 export interface DraggingPieceState {
   piece: PieceShape;
   trayIndex: number;
+  pointerId?: number;
   pointerX: number;
   pointerY: number;
   startX: number;

@@ -7,6 +7,9 @@ import React from 'react';
 import { PlayerProfile, getTierFromScore, getTierBadgeStyle } from '../game/leaderboard';
 import { DifficultyModeId } from '../game/types';
 import { DIFFICULTY_MODES, DIFFICULTY_ORDER, getDifficultyConfig } from '../game/shapes';
+import { ACHIEVEMENTS, PlayerStats, getLevelInfo } from '../game/progression';
+import { GameTheme } from '../game/themes';
+import { PlayerAvatar } from './PlayerAvatar';
 
 interface HomeScreenProps {
   playerProfile: PlayerProfile;
@@ -14,15 +17,21 @@ interface HomeScreenProps {
   modeBestScore: number;
   difficultyMode: DifficultyModeId;
   userRank: number;
-  soundEnabled: boolean;
-  musicEnabled: boolean;
-  onToggleSound: () => void;
-  onToggleMusic: () => void;
+  playerStats: PlayerStats;
+  activeTheme: GameTheme;
+  unclaimedDailyCount: number;
+  friendCount: number;
+  incomingFriendRequests: number;
   onOpenAudioSettings: () => void;
   onSelectDifficulty: (mode: DifficultyModeId) => void;
   onStartGame: () => void;
   onOpenLeaderboard: () => void;
   onOpenNameModal: () => void;
+  onOpenMyProfile: () => void;
+  onOpenDaily: () => void;
+  onOpenAchievements: () => void;
+  onOpenThemes: () => void;
+  onOpenFriends: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -31,123 +40,213 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   modeBestScore,
   difficultyMode,
   userRank,
-  soundEnabled,
-  musicEnabled,
-  onToggleSound,
-  onToggleMusic,
+  playerStats,
+  activeTheme,
+  unclaimedDailyCount,
+  friendCount,
+  incomingFriendRequests,
   onOpenAudioSettings,
   onSelectDifficulty,
   onStartGame,
   onOpenLeaderboard,
   onOpenNameModal,
+  onOpenMyProfile,
+  onOpenDaily,
+  onOpenAchievements,
+  onOpenThemes,
+  onOpenFriends,
 }) => {
   const tier = getTierFromScore(bestScore);
   const tierStyle = getTierBadgeStyle(tier);
   const initial = (playerProfile.avatarLetter || playerProfile.username.charAt(0) || 'P').toUpperCase();
   const activeModeConfig = getDifficultyConfig(difficultyMode);
+  const levelInfo = getLevelInfo(playerStats.xp);
 
   return (
-    <div className="w-full h-full flex flex-col justify-between items-center text-center select-none animate-fadeIn">
+    <div className="w-full h-full flex flex-col justify-between items-center text-center select-none animate-fadeIn px-2 sm:px-2.5">
       {/* Top Header Bar: Corner buttons have explicit 10px margins from screen border and >=4px from neighbors */}
-      <header className="w-full flex items-center justify-between px-2 sm:px-3 pt-1">
-        {/* Player Profile Chip (Top Left Corner: 10px margin from top/left border, 4px from neighbors) */}
+      <header className="w-full flex items-center justify-between pt-1 shrink-0">
+        {/* Player Profile Chip -> Opens full player profile & stats */}
         <button
           type="button"
-          onClick={onOpenNameModal}
-          style={{ marginLeft: 10, marginTop: 10, marginRight: 4, marginBottom: 4 }}
-          className="btn-creatyxo rounded-xl bg-[#101625] border border-[#1b263d] hover:border-[#3debe0]/50 transition-all cursor-pointer group active:scale-95 shadow-sm gap-2.5 max-w-[70%]"
-          title="Click to edit player name"
+          onClick={onOpenMyProfile}
+          style={{
+            marginLeft: 10,
+            marginTop: 10,
+            marginRight: 4,
+            marginBottom: 4,
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="btn-creatyxo rounded-xl border transition-all cursor-pointer group active:scale-95 shadow-sm gap-2 max-w-[70%]"
+          title="View Player Profile & Stats"
         >
-          {/* Monogram Circle */}
-          <div className="w-7 h-7 rounded-lg bg-[#172238] border border-[#233250] text-[#3debe0] font-black text-xs flex items-center justify-center text-center font-['Orbitron',sans-serif] shrink-0">
-            {initial}
-          </div>
+          <PlayerAvatar
+            letter={initial}
+            avatarUrl={playerProfile.avatarUrl}
+            sizeClass="w-7 h-7"
+            textClass="text-xs"
+            accentColor={activeTheme.accentHex}
+            bgColor={activeTheme.boardBg}
+            borderColor={activeTheme.surfaceBorder}
+          />
 
-          <div className="flex flex-col text-left justify-center min-w-0 pr-1 gap-1">
+          <div className="flex flex-col text-left justify-center min-w-0 pr-1 gap-0.5">
             <div className="flex items-center gap-1.5 truncate">
-              <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] group-hover:text-[#3debe0] transition-colors truncate leading-normal">
+              <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] transition-colors truncate leading-normal">
                 {playerProfile.username}
               </span>
               {playerProfile.tag && (
-                <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                <span className="text-[9.5px] text-slate-500 font-mono shrink-0">
                   #{playerProfile.tag}
                 </span>
               )}
+              <span
+                style={{ color: activeTheme.accentHex }}
+                className="text-[8px] font-black px-1.5 py-0.5 rounded bg-[#121d33] border border-[#233554] font-['Orbitron',sans-serif] shrink-0"
+              >
+                LV.{levelInfo.level}
+              </span>
             </div>
-            <span className="text-[8.5px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal mt-1">
-              EDIT NAME
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+                {levelInfo.rankTitle.toUpperCase()} • PROFILE
+              </span>
+            </div>
           </div>
         </button>
 
-        {/* Settings Button (Top Right Corner: 10px margin from top/right border, 4px from neighbors) */}
-        <button
-          type="button"
-          onClick={onOpenAudioSettings}
-          style={{
-            padding: 8,
-            marginLeft: 4,
-            marginRight: 10,
-            marginTop: 10,
-            marginBottom: 4,
-          }}
-          className="btn-creatyxo-icon rounded-xl border border-[#1b263d] bg-[#101625] text-slate-400 hover:text-[#3debe0] hover:border-[#3debe0]/50 cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
-          aria-label="Settings, Sound & Music"
-          title="Settings (Music & Sound)"
-        >
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-          </svg>
-        </button>
+        {/* Settings & Name Edit Buttons (Top Right Corner) */}
+        <div className="flex items-center shrink-0">
+          <button
+            type="button"
+            onClick={onOpenNameModal}
+            style={{
+              padding: 8,
+              marginLeft: 4,
+              marginRight: 4,
+              marginTop: 10,
+              marginBottom: 4,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: activeTheme.surfaceBorder,
+            }}
+            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+            aria-label="Edit player name and profile picture"
+            title="Edit Name & PFP"
+          >
+            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenAudioSettings}
+            style={{
+              padding: 8,
+              marginLeft: 4,
+              marginRight: 10,
+              marginTop: 10,
+              marginBottom: 4,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: activeTheme.surfaceBorder,
+            }}
+            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+            aria-label="Settings, Sound & Music"
+            title="Settings (Music & Sound)"
+          >
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* Central Branding with balanced spatial margins */}
-      <div className="w-full flex flex-col items-center gap-4 my-auto py-2">
+      <div className="w-full flex flex-col items-center gap-2.5 my-auto py-1 px-2">
         {/* Title */}
-        <div className="flex flex-col items-center gap-1">
-          <h1 className="text-4xl sm:text-5xl font-black text-[#3debe0] font-['Black_Ops_One',sans-serif] tracking-wider drop-shadow-[0_0_18px_rgba(61,235,224,0.38)] leading-tight text-center">
+        <div className="flex flex-col items-center gap-0.5">
+          <h1
+            style={{
+              color: activeTheme.titleTextColor,
+              filter: `drop-shadow(0 0 18px ${activeTheme.accentGlowRgba})`,
+            }}
+            className="text-4xl sm:text-5xl font-black font-['Black_Ops_One',sans-serif] tracking-wider leading-tight text-center"
+          >
             CREATYXO
           </h1>
-          <p className="text-[10px] font-bold tracking-[0.28em] text-slate-400 font-['Orbitron',sans-serif] uppercase leading-normal mt-1 text-center">
+          <p className="text-[10px] font-bold tracking-[0.28em] text-slate-400 font-['Orbitron',sans-serif] uppercase leading-normal text-center">
             BLOCK PUZZLE
           </p>
         </div>
 
-        {/* Clean Score Card with >=4px distance */}
-        <div className="w-full max-w-[320px] sm:max-w-[340px] bg-[#0c1220] border border-[#1b263d] rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm min-h-[64px]">
-          <div className="flex flex-col text-left justify-center gap-0.5">
-            <span className="text-[9.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
-              {activeModeConfig.boardSize}×{activeModeConfig.boardSize} BEST
-            </span>
-            <span className="text-xl sm:text-2xl font-black text-[#f6c445] font-['Orbitron',sans-serif] mt-0.5 leading-normal tabular-nums">
-              {modeBestScore.toLocaleString()}
-            </span>
+        {/* Clean Score & Level Card */}
+        <div
+          style={{
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="w-full max-w-[330px] sm:max-w-[350px] border rounded-2xl px-4 py-2.5 flex flex-col gap-2 shadow-sm"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col text-left justify-center gap-0.5">
+              <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+                {activeModeConfig.boardSize}×{activeModeConfig.boardSize} BEST
+              </span>
+              <span className="text-xl font-black text-[#f6c445] font-['Orbitron',sans-serif] leading-normal tabular-nums">
+                {modeBestScore.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="flex flex-col items-end justify-center gap-0.5">
+              <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+                GLOBAL RANK
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-white font-['Orbitron',sans-serif] leading-normal">
+                  #{userRank}
+                </span>
+                <span
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border} font-['Orbitron',sans-serif] leading-normal`}
+                >
+                  {tier}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col items-end justify-center gap-0.5">
-            <span className="text-[9.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
-              GLOBAL RANK
-            </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-sm font-black text-white font-['Orbitron',sans-serif] leading-normal">
-                #{userRank}
+          {/* Mini XP Progress Bar */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
+            <div className="flex items-center justify-between text-[8.5px] font-bold font-['Orbitron',sans-serif]">
+              <span style={{ color: activeTheme.accentHex }}>
+                LV.{levelInfo.level} {levelInfo.rankTitle.toUpperCase()}
               </span>
-              <span
-                className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border} font-['Orbitron',sans-serif] leading-normal`}
-              >
-                {tier}
+              <span className="text-slate-400 tabular-nums">
+                {levelInfo.xpIntoLevel}/{levelInfo.xpNeededForNext} XP
               </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-[#131c2e] overflow-hidden">
+              <div
+                style={{
+                  width: `${levelInfo.progressPercent}%`,
+                  backgroundColor: activeTheme.accentHex,
+                }}
+                className="h-full rounded-full transition-all duration-300"
+              />
             </div>
           </div>
         </div>
 
         {/* Difficulty & Board Size Selector */}
-        <div className="w-full max-w-[320px] sm:max-w-[340px] flex flex-col gap-1.5">
+        <div className="w-full max-w-[330px] sm:max-w-[350px] flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-1">
             <span className="text-[9px] font-bold tracking-widest text-slate-400 font-['Orbitron',sans-serif] uppercase">
               MODE & BOARD SIZE
             </span>
-            <span className="text-[9px] font-bold tracking-wider text-[#3debe0] font-['Orbitron',sans-serif]">
+            <span
+              style={{ color: activeTheme.accentHex }}
+              className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif]"
+            >
               {activeModeConfig.subtitle}
             </span>
           </div>
@@ -162,17 +261,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   key={modeId}
                   type="button"
                   onClick={() => onSelectDifficulty(modeId)}
-                  style={{ margin: 0 }}
-                  className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer active:scale-95 ${
-                    isSelected
-                      ? 'bg-[#122638] border-[#3debe0] text-white shadow-[0_0_14px_rgba(61,235,224,0.25)]'
-                      : 'bg-[#0c1220] border-[#1b263d] text-slate-400 hover:border-[#2a3b5c] hover:text-slate-200'
-                  }`}
+                  style={{
+                    margin: 0,
+                    backgroundColor: isSelected ? activeTheme.surfaceBg : '#0c1220',
+                    borderColor: isSelected ? activeTheme.accentHex : activeTheme.surfaceBorder,
+                    boxShadow: isSelected ? `0 0 14px ${activeTheme.accentGlowRgba}` : undefined,
+                  }}
+                  className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer active:scale-95 text-slate-300 hover:text-white"
                 >
                   <span
-                    className={`text-xs font-black font-['Orbitron',sans-serif] leading-tight ${
-                      isSelected ? 'text-[#3debe0]' : 'text-slate-200'
-                    }`}
+                    style={{ color: isSelected ? activeTheme.accentHex : '#e2e8f0' }}
+                    className="text-xs font-black font-['Orbitron',sans-serif] leading-tight"
                   >
                     {cfg.boardSize}×{cfg.boardSize}
                   </span>
@@ -184,15 +283,120 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             })}
           </div>
         </div>
+
+        {/* Progression, Themes & Friends Quick Hub */}
+        <div className="grid grid-cols-4 gap-1.5 w-full max-w-[330px] sm:max-w-[350px]">
+          <button
+            type="button"
+            onClick={onOpenDaily}
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: unclaimedDailyCount > 0 ? activeTheme.accentHex : activeTheme.surfaceBorder,
+            }}
+            className="relative flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          >
+            {unclaimedDailyCount > 0 && (
+              <span
+                style={{ backgroundColor: activeTheme.accentHex }}
+                className="w-2 h-2 rounded-full absolute top-1.5 right-1.5 animate-pulse"
+              />
+            )}
+            <span className="text-[10px] font-black text-amber-300 font-['Orbitron',sans-serif] leading-tight">
+              🔥 {playerStats.dailyStreak}d
+            </span>
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+              DAILY
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenAchievements}
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: activeTheme.surfaceBorder,
+            }}
+            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          >
+            <span
+              style={{ color: activeTheme.accentHex }}
+              className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight"
+            >
+              {playerStats.unlockedAchievements.length}/{ACHIEVEMENTS.length}
+            </span>
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+              AWARDS
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenThemes}
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: activeTheme.surfaceBorder,
+            }}
+            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          >
+            <span className="flex items-center gap-1 leading-tight">
+              <span
+                style={{ backgroundColor: activeTheme.swatchPrimary }}
+                className="w-2.5 h-2.5 rounded-full inline-block"
+              />
+              <span
+                style={{ backgroundColor: activeTheme.swatchSecondary }}
+                className="w-2.5 h-2.5 rounded-full inline-block"
+              />
+            </span>
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+              THEMES
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenFriends}
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.surfaceBg,
+              borderColor: incomingFriendRequests > 0 ? '#fb7185' : activeTheme.surfaceBorder,
+            }}
+            className="relative flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          >
+            {incomingFriendRequests > 0 && (
+              <span className="px-1 rounded-full bg-rose-500 text-white text-[7.5px] font-black absolute top-1 right-1 animate-pulse leading-tight">
+                {incomingFriendRequests}
+              </span>
+            )}
+            <span
+              style={{ color: activeTheme.accentHex }}
+              className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight"
+            >
+              {friendCount}
+            </span>
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+              FRIENDS
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* Spacious Main Action Buttons: Inset 10px from border, 12px gap between buttons */}
-      <div className="w-full max-w-[320px] sm:max-w-[340px] px-3 sm:px-4 flex flex-col gap-3 mb-2.5">
+      {/* Spacious Main Action Buttons */}
+      <div className="w-full max-w-[330px] sm:max-w-[350px] px-2 flex flex-col gap-2.5 mb-2 shrink-0">
         {/* PRIMARY: JUMP INTO THE GAME */}
         <button
           type="button"
           onClick={onStartGame}
-          className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] shadow-[0_0_24px_rgba(61,235,224,0.38)] active:scale-95 transition-all cursor-pointer m-1"
+          style={{
+            margin: 0,
+            backgroundColor: activeTheme.primaryBtnBg,
+            color: activeTheme.primaryBtnText,
+            boxShadow: `0 0 24px ${activeTheme.accentGlowRgba}`,
+          }}
+          className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
         >
           JUMP INTO THE GAME
         </button>
@@ -201,16 +405,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <button
           type="button"
           onClick={onOpenLeaderboard}
-          className="btn-creatyxo w-full rounded-xl bg-[#121828] border border-[#1d273f] hover:border-[#3debe0]/40 text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#161f33] active:scale-95 transition-all cursor-pointer m-1"
+          style={{
+            margin: 0,
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="btn-creatyxo w-full rounded-xl border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
         >
           LEADERBOARD
         </button>
       </div>
 
-      {/* Clean quiet footer: at least 10px from screen bottom border */}
-      <footer className="text-[9px] text-slate-600 font-['Orbitron',sans-serif] tracking-widest uppercase pb-2.5 mb-2.5 leading-normal">
+      {/* Clean quiet footer */}
+      <footer className="text-[9px] text-slate-600 font-['Orbitron',sans-serif] tracking-widest uppercase pb-2 mb-1 leading-normal shrink-0">
         Match Rows & Columns
       </footer>
     </div>
   );
 };
+

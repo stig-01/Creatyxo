@@ -161,44 +161,162 @@ export function playPlaceSound(enabled = true) {
   }
 }
 
+let sfxCompressorNode: DynamicsCompressorNode | null = null;
+
+function getSfxDestination(ctx: AudioContext): AudioNode {
+  if (!sfxCompressorNode) {
+    sfxCompressorNode = ctx.createDynamicsCompressor();
+    sfxCompressorNode.threshold.setValueAtTime(-12, ctx.currentTime);
+    sfxCompressorNode.knee.setValueAtTime(12, ctx.currentTime);
+    sfxCompressorNode.ratio.setValueAtTime(4, ctx.currentTime);
+    sfxCompressorNode.attack.setValueAtTime(0.003, ctx.currentTime);
+    sfxCompressorNode.release.setValueAtTime(0.15, ctx.currentTime);
+    sfxCompressorNode.connect(ctx.destination);
+  }
+  return sfxCompressorNode;
+}
+
 /**
- * Clear rows/columns and trigger combo with rich harmonic chimes and fanfare
+ * Clear rows/columns and trigger combo with pitch-shifted harmonic chimes and escalating intensity
  */
-export function playClearSound(combo = 1, linesCleared = 1, enabled = true) {
+export function playClearSound(
+  combo = 1,
+  linesCleared = 1,
+  enabled = true,
+  comboMultiplier?: number
+) {
   if (!enabled || currentSoundVolume <= 0) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
   try {
-    // Ascending celebratory notes tailored to combo count and line count
-    const pentatonic = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51, 1567.98, 1760.0];
-    const startIndex = Math.min(pentatonic.length - 4, (combo - 1) % 5);
-    const noteCount = linesCleared >= 3 ? 5 : linesCleared >= 2 ? 4 : 3;
-    const notes: number[] = [];
+    const now = ctx.currentTime;
+    const destination = getSfxDestination(ctx);
 
-    for (let i = 0; i < noteCount; i++) {
-      const idx = (startIndex + i * 2) % pentatonic.length;
-      notes.push(pentatonic[idx]);
+    const safeCombo = Math.max(1, combo);
+    const safeLines = Math.max(1, linesCleared);
+    const effectiveMultiplier =
+      typeof comboMultiplier === 'number' && Number.isFinite(comboMultiplier)
+        ? Math.max(1, comboMultiplier)
+        : 1 + Math.max(0, safeCombo - 1) * 0.5;
+
+    // Continuous upward pitch shift scaled by combo multiplier (2 semitones per 0.5x step up to +12st, then +1st per step up to +18st)
+    const comboSteps = Math.max(0, (effectiveMultiplier - 1) * 2);
+    const semitoneShift =
+      comboSteps <= 6 ? comboSteps * 2 : 12 + Math.min(6, comboSteps - 6);
+    const pitchMultiplier = Math.pow(2, semitoneShift / 12);
+
+    // Normalized intensity (0.0 at 1.0x -> 1.0 at 4.5x+), boosted slightly by multi-line clears
+    const comboIntensity = Math.min(1, Math.max(0, (effectiveMultiplier - 1) / 3.5));
+    const lineBoost = Math.min(0.25, (safeLines - 1) * 0.08);
+    const intensity = Math.min(1, comboIntensity + lineBoost);
+
+    // Low-end tactile impact punch that intensifies with longer chains
+    if (safeCombo >= 2 || safeLines >= 2) {
+      const punchOsc = ctx.createOscillator();
+      const punchGain = ctx.createGain();
+      punchOsc.type = 'sine';
+      const startPunchFreq = 120 + intensity * 60;
+      punchOsc.frequency.setValueAtTime(startPunchFreq, now);
+      punchOsc.frequency.exponentialRampToValueAtTime(48, now + 0.11);
+
+      const punchPeak = (0.16 + intensity * 0.22) * currentSoundVolume;
+      punchGain.gain.setValueAtTime(0.001, now);
+      punchGain.gain.linearRampToValueAtTime(punchPeak, now + 0.008);
+      punchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      punchOsc.connect(punchGain);
+      punchGain.connect(destination);
+      punchOsc.start(now);
+      punchOsc.stop(now + 0.13);
     }
 
-    notes.forEach((freq, idx) => {
+    // Bright ascending major-9th/10th arpeggio anchored at C5, transposed upward by pitchMultiplier
+    const baseRootHz = 523.25; // C5
+    const arpeggioSemitones = [0, 4, 7, 12, 14, 16];
+    const noteCount = safeLines >= 4 ? 6 : safeLines >= 3 ? 5 : safeLines >= 2 ? 4 : 3;
+    const stepInterval = Math.max(0.032, 0.058 - intensity * 0.024);
+    const noteDuration = 0.28 + intensity * 0.14;
+
+    // Shared sweeping lowpass filter for rich harmonic overtones on intense combos
+    const harmonicFilter = ctx.createBiquadFilter();
+    harmonicFilter.type = 'lowpass';
+    const filterStartHz = 1600 + intensity * 2400;
+    const filterPeakHz = 2800 + intensity * 3600;
+    harmonicFilter.frequency.setValueAtTime(filterStartHz, now);
+    harmonicFilter.frequency.exponentialRampToValueAtTime(
+      filterPeakHz,
+      now + noteCount * stepInterval + 0.08
+    );
+    harmonicFilter.Q.setValueAtTime(1.0 + intensity * 2.2, now);
+    harmonicFilter.connect(destination);
+
+    for (let idx = 0; idx < noteCount; idx++) {
+      const noteStart = now + idx * stepInterval;
+      const intervalSemis = arpeggioSemitones[idx % arpeggioSemitones.length];
+      const freq = baseRootHz * pitchMultiplier * Math.pow(2, intervalSemis / 12);
+
+      // Core voice
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      osc.type = safeCombo >= 3 ? 'triangle' : 'sine';
 
-      osc.type = combo >= 3 ? 'triangle' : 'sine';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.06);
+      // Energetic upward snap into pitch as combo intensity rises
+      if (intensity > 0.05) {
+        osc.frequency.setValueAtTime(freq * (1 - 0.05 * intensity), noteStart);
+        osc.frequency.exponentialRampToValueAtTime(freq, noteStart + 0.026);
+      } else {
+        osc.frequency.setValueAtTime(freq, noteStart);
+      }
 
-      const peak = (0.45 + Math.min(0.25, combo * 0.05)) * currentSoundVolume;
-      gain.gain.setValueAtTime(0, ctx.currentTime + idx * 0.06);
-      gain.gain.linearRampToValueAtTime(peak, ctx.currentTime + idx * 0.06 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.06 + 0.32);
+      const peak = (0.38 + intensity * 0.22) * currentSoundVolume;
+      gain.gain.setValueAtTime(0.001, noteStart);
+      gain.gain.linearRampToValueAtTime(peak, noteStart + 0.014);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteStart + noteDuration);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(destination);
+      osc.start(noteStart);
+      osc.stop(noteStart + noteDuration + 0.01);
 
-      osc.start(ctx.currentTime + idx * 0.06);
-      osc.stop(ctx.currentTime + idx * 0.06 + 0.32);
-    });
+      // Intensity harmonic layer (adds bright sawtooth/triangle edge & detuned chorus at higher combos)
+      if (safeCombo >= 2 || safeLines >= 2) {
+        const harmOsc = ctx.createOscillator();
+        const harmGain = ctx.createGain();
+        harmOsc.type = safeCombo >= 4 ? 'sawtooth' : 'triangle';
+        harmOsc.frequency.setValueAtTime(freq * (1 + 0.004 * (1 + intensity)), noteStart);
+
+        const harmPeak = (0.09 + intensity * 0.16) * currentSoundVolume;
+        harmGain.gain.setValueAtTime(0.001, noteStart);
+        harmGain.gain.linearRampToValueAtTime(harmPeak, noteStart + 0.016);
+        harmGain.gain.exponentialRampToValueAtTime(0.001, noteStart + noteDuration * 0.9);
+
+        harmOsc.connect(harmGain);
+        harmGain.connect(harmonicFilter);
+        harmOsc.start(noteStart);
+        harmOsc.stop(noteStart + noteDuration);
+      }
+
+      // Final note crystalline octave shimmer for high-energy chains
+      if (idx === noteCount - 1 && (safeCombo >= 2 || safeLines >= 2)) {
+        const shimmerFreq = Math.min(4400, freq * 2);
+        const shimmerOsc = ctx.createOscillator();
+        const shimmerGain = ctx.createGain();
+        shimmerOsc.type = 'sine';
+        shimmerOsc.frequency.setValueAtTime(shimmerFreq, noteStart);
+
+        const shimmerPeak = (0.1 + intensity * 0.18) * currentSoundVolume;
+        const shimmerDuration = noteDuration + 0.14;
+        shimmerGain.gain.setValueAtTime(0.001, noteStart);
+        shimmerGain.gain.linearRampToValueAtTime(shimmerPeak, noteStart + 0.02);
+        shimmerGain.gain.exponentialRampToValueAtTime(0.001, noteStart + shimmerDuration);
+
+        shimmerOsc.connect(shimmerGain);
+        shimmerGain.connect(destination);
+        shimmerOsc.start(noteStart);
+        shimmerOsc.stop(noteStart + shimmerDuration + 0.01);
+      }
+    }
   } catch {
     // Ignore
   }

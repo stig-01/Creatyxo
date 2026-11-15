@@ -44,19 +44,69 @@ import { HomeScreen } from './components/HomeScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { NameSetupModal } from './components/NameSetupModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
+import { ThemesModal, ThemesModalTab } from './components/ThemesModal';
+import { ProgressionModal, ProgressionTab } from './components/ProgressionModal';
+import { PlayerProfileModal } from './components/PlayerProfileModal';
+import { FriendsModal } from './components/FriendsModal';
+import { ScoreCard } from './components/ScoreCard';
+import { BlockSkinOverlay } from './components/BlockSkinOverlay';
+import { CosmeticPreviewModal } from './components/CosmeticPreviewModal';
+import { ComboFlareOverlay, ComboFlareBurst } from './components/ComboFlareOverlay';
 import {
   PlayerProfile,
+  LeaderboardEntry,
   generateRandomName,
   buildLeaderboard,
   fetchSharedLeaderboard,
   savePlayerToLeaderboard,
+  subscribeToLeaderboardUpdates,
+  getPlayerId,
 } from './game/leaderboard';
+import {
+  FriendshipRecord,
+  loadFriendships,
+  listenToFriendships,
+  sendFriendRequest,
+  respondToFriendRequest,
+  removeFriendship,
+} from './game/friends';
+import {
+  ThemeId,
+  GAME_THEMES,
+  getGameTheme,
+  isThemeUnlocked,
+} from './game/themes';
+import {
+  BlockSkinId,
+  BLOCK_SKINS,
+  isBlockSkinUnlocked,
+} from './game/blockSkins';
+import {
+  PlayerStats,
+  DailyChallengeDef,
+  AchievementDef,
+  loadPlayerStats,
+  savePlayerStats,
+  evaluateAchievements,
+  getLevelInfo,
+  getDailyChallenges,
+  getTodayDateKey,
+  createEmptyDailyProgress,
+  formatDuration,
+} from './game/progression';
 
 export interface FlyingClearMessage {
   id: string;
   multiplier: number;
   points: number;
   accentColor: string;
+}
+
+export interface ToastNotice {
+  id: string;
+  title: string;
+  subtitle: string;
+  accent: string;
 }
 
 export default function App() {
@@ -100,11 +150,79 @@ export default function App() {
     return false;
   });
 
+  // Progression, XP, Achievements, Daily Challenges & Streak State
+  const initialBootRef = useRef<ReturnType<typeof loadPlayerStats> | null>(null);
+  if (!initialBootRef.current) {
+    initialBootRef.current = loadPlayerStats();
+  }
+  const [playerStats, setPlayerStats] = useState<PlayerStats>(() => initialBootRef.current!.stats);
+  const playerStatsRef = useRef<PlayerStats>(playerStats);
+  playerStatsRef.current = playerStats;
+
+  // Theme State (Starter + Achievement-Unlocked Themes)
+  const [activeThemeId, setActiveThemeId] = useState<ThemeId>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('creatyxo_active_theme') as ThemeId | null;
+      if (saved && saved in GAME_THEMES) {
+        if (isThemeUnlocked(saved, initialBootRef.current!.stats.unlockedAchievements)) {
+          return saved;
+        }
+      }
+    }
+    return 'cyber-neon';
+  });
+  const [previewThemeId, setPreviewThemeId] = useState<ThemeId | null>(null);
+  const activeTheme = getGameTheme(activeThemeId);
+  const displayTheme = activeTheme;
+
+  // Cosmetic Block Skin State (Starter + 3/7/14-Day Streak Rewards)
+  const [activeBlockSkinId, setActiveBlockSkinId] = useState<BlockSkinId>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('creatyxo_active_block_skin') as BlockSkinId | null;
+      const bootStats = initialBootRef.current!.stats;
+      const bestStreak = Math.max(bootStats.dailyStreak, bootStats.bestDailyStreak);
+      if (
+        saved &&
+        saved in BLOCK_SKINS &&
+        isBlockSkinUnlocked(saved, bestStreak, bootStats.unlockedBlockSkins)
+      ) {
+        return saved;
+      }
+    }
+    return 'classic-gloss';
+  });
+  const [previewBlockSkinId, setPreviewBlockSkinId] = useState<BlockSkinId | null>(null);
+  const displayBlockSkinId: BlockSkinId = activeBlockSkinId;
+  const isPreviewingCosmetic = Boolean(previewThemeId || previewBlockSkinId);
+
+  // Progression, Themes, Friends & Profile Modal States
+  const [isThemesOpen, setIsThemesOpen] = useState<boolean>(false);
+  const [themesModalTab, setThemesModalTab] = useState<ThemesModalTab>('themes');
+  const [progressionModalTab, setProgressionModalTab] = useState<ProgressionTab | null>(null);
+  const [isMyProfileOpen, setIsMyProfileOpen] = useState<boolean>(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState<boolean>(false);
+  const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState<string | null>(null);
+  const [toastNotices, setToastNotices] = useState<ToastNotice[]>([]);
+
+  // Friends & Global Players State
+  const currentPlayerId = useMemo(() => getPlayerId(), []);
+  const [friendships, setFriendships] = useState<FriendshipRecord[]>([]);
+  const [allPlayers, setAllPlayers] = useState<LeaderboardEntry[]>([]);
+
+  // Session Playtime Tracking
+  const [sessionElapsedSec, setSessionElapsedSec] = useState<number>(0);
+  const sessionElapsedRef = useRef<number>(0);
+  sessionElapsedRef.current = sessionElapsedSec;
+  const hasPlacedInSessionRef = useRef<boolean>(false);
+  const sessionFinalizedRef = useRef<boolean>(false);
+
   // Visual effects & Flying floating combo score messages
   const [flyingMessages, setFlyingMessages] = useState<FlyingClearMessage[]>([]);
   const [clearingRows, setClearingRows] = useState<number[]>([]);
   const [clearingCols, setClearingCols] = useState<number[]>([]);
   const [isBoardShaking, setIsBoardShaking] = useState<boolean>(false);
+  const [comboFlareBurst, setComboFlareBurst] = useState<ComboFlareBurst | null>(null);
+  const comboFlareTimeoutRef = useRef<number | null>(null);
 
   // Difficulty Mode & Board Size State
   const [difficultyMode, setDifficultyMode] = useState<DifficultyModeId>(() => {
@@ -309,12 +427,216 @@ export default function App() {
 
   const lastPreviewRef = useRef<PlacementCoordinate | null>(null);
 
+  const pushToast = useCallback((title: string, subtitle: string, accent: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToastNotices((prev) => [...prev.slice(-2), { id, title, subtitle, accent }]);
+    setTimeout(() => {
+      setToastNotices((prev) => prev.filter((t) => t.id !== id));
+    }, 3800);
+  }, []);
+
+  const bestScoreRef = useRef<number>(bestScore);
+  bestScoreRef.current = bestScore;
+  const scoreRef = useRef<number>(score);
+  scoreRef.current = score;
+
+  const commitStatsUpdate = useCallback(
+    (updater: (prev: PlayerStats) => PlayerStats, bestScoreOverride?: number): PlayerStats => {
+      const prev = playerStatsRef.current;
+      const updated = updater(prev);
+      const effectiveBest = Math.max(bestScoreRef.current, bestScoreOverride || 0);
+      const { nextStats, newlyUnlocked } = evaluateAchievements(updated, effectiveBest);
+      playerStatsRef.current = nextStats;
+      setPlayerStats(nextStats);
+      savePlayerStats(nextStats);
+
+      if (newlyUnlocked.length > 0) {
+        triggerHaptic('clear', hapticsEnabled);
+        newlyUnlocked.forEach((ach: AchievementDef) => {
+          const rewardTheme = ach.unlockThemeId ? GAME_THEMES[ach.unlockThemeId] : null;
+          pushToast(
+            `${ach.badgeIcon} ${ach.name.toUpperCase()}`,
+            rewardTheme
+              ? `+${ach.xpReward} XP • Unlocked ${rewardTheme.name} theme!`
+              : `Achievement Unlocked • +${ach.xpReward} XP`,
+            displayTheme.accentHex
+          );
+        });
+      }
+
+      return nextStats;
+    },
+    [hapticsEnabled, pushToast, displayTheme.accentHex]
+  );
+
+  // Daily Streak Welcome Toast + Skin Unlock Celebration + Initial Sync
+  useEffect(() => {
+    const boot = initialBootRef.current;
+    if (boot?.newDayCheckIn) {
+      pushToast(
+        `🔥 ${boot.stats.dailyStreak}-DAY STREAK!`,
+        `Daily check-in reward: +${boot.streakRewardXp} XP`,
+        '#fbbf24'
+      );
+    }
+    if (boot?.newlyUnlockedSkins && boot.newlyUnlockedSkins.length > 0) {
+      boot.newlyUnlockedSkins.forEach((skin) => {
+        pushToast(
+          `${skin.badgeIcon} BLOCK SKIN UNLOCKED!`,
+          `${skin.name} • ${skin.requiredStreakDays}-Day Streak Reward`,
+          skin.accentHex
+        );
+      });
+    }
+    const { nextStats } = evaluateAchievements(playerStatsRef.current, bestScoreRef.current);
+    if (nextStats.unlockedAchievements.length !== playerStatsRef.current.unlockedAchievements.length) {
+      playerStatsRef.current = nextStats;
+      setPlayerStats(nextStats);
+      savePlayerStats(nextStats);
+    }
+  }, []);
+
+  // Active Gameplay Timer (ticks 1s while actively playing)
+  useEffect(() => {
+    if (activeScreen !== 'game' || isPaused || isGameOver) return;
+
+    const timer = window.setInterval(() => {
+      const nextSession = sessionElapsedRef.current + 1;
+      sessionElapsedRef.current = nextSession;
+      setSessionElapsedSec(nextSession);
+
+      commitStatsUpdate((prev) => ({
+        ...prev,
+        totalPlaytimeSec: prev.totalPlaytimeSec + 1,
+        longestSessionSec: Math.max(prev.longestSessionSec, nextSession),
+      }));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [activeScreen, isPaused, isGameOver, commitStatsUpdate]);
+
+  const handleSelectTheme = useCallback(
+    (themeId: ThemeId) => {
+      if (!isThemeUnlocked(themeId, playerStatsRef.current.unlockedAchievements)) return;
+      triggerHaptic('tap', hapticsEnabled);
+      setPreviewThemeId(null);
+      setActiveThemeId(themeId);
+      try {
+        localStorage.setItem('creatyxo_active_theme', themeId);
+      } catch {
+        // ignore
+      }
+      savePlayerToLeaderboard(
+        playerProfile,
+        bestScoreRef.current,
+        playerStatsRef.current,
+        themeId
+      ).catch(() => {});
+    },
+    [hapticsEnabled, playerProfile]
+  );
+
+  const handlePreviewTheme = useCallback(
+    (themeId: ThemeId) => {
+      triggerHaptic('tap', hapticsEnabled);
+      setPreviewBlockSkinId(null);
+      setPreviewThemeId(themeId);
+    },
+    [hapticsEnabled]
+  );
+
+  const handleSelectBlockSkin = useCallback(
+    (skinId: BlockSkinId) => {
+      const stats = playerStatsRef.current;
+      const bestStreak = Math.max(stats.dailyStreak, stats.bestDailyStreak);
+      if (!isBlockSkinUnlocked(skinId, bestStreak, stats.unlockedBlockSkins)) return;
+      triggerHaptic('tap', hapticsEnabled);
+      setPreviewBlockSkinId(null);
+      setActiveBlockSkinId(skinId);
+      try {
+        localStorage.setItem('creatyxo_active_block_skin', skinId);
+      } catch {
+        // ignore
+      }
+    },
+    [hapticsEnabled]
+  );
+
+  const handlePreviewBlockSkin = useCallback(
+    (skinId: BlockSkinId) => {
+      triggerHaptic('tap', hapticsEnabled);
+      setPreviewThemeId(null);
+      setPreviewBlockSkinId(skinId);
+    },
+    [hapticsEnabled]
+  );
+
+  const handleCloseCosmeticPreview = useCallback(() => {
+    triggerHaptic('tap', hapticsEnabled);
+    setPreviewThemeId(null);
+    setPreviewBlockSkinId(null);
+  }, [hapticsEnabled]);
+
+  const handleClaimDailyChallenge = useCallback(
+    (challenge: DailyChallengeDef) => {
+      const todayKey = getTodayDateKey();
+      const prevDaily = playerStatsRef.current.dailyProgress;
+      if (prevDaily.date === todayKey && prevDaily.claimedIds.includes(challenge.id)) return;
+
+      triggerHaptic('clear', hapticsEnabled);
+      playClearSound(2, 2, soundEnabled);
+
+      const nextStats = commitStatsUpdate((prev) => {
+        const daily =
+          prev.dailyProgress.date === todayKey
+            ? prev.dailyProgress
+            : createEmptyDailyProgress(todayKey);
+        if (daily.claimedIds.includes(challenge.id)) return prev;
+        return {
+          ...prev,
+          xp: prev.xp + challenge.xpReward,
+          totalQuestsClaimed: (prev.totalQuestsClaimed || 0) + 1,
+          dailyProgress: {
+            ...daily,
+            claimedIds: [...daily.claimedIds, challenge.id],
+          },
+        };
+      });
+
+      pushToast(
+        `⚡ MISSION COMPLETE`,
+        `${challenge.title} • +${challenge.xpReward} XP`,
+        displayTheme.accentHex
+      );
+
+      savePlayerToLeaderboard(
+        playerProfile,
+        bestScoreRef.current,
+        nextStats,
+        activeThemeId
+      ).catch(() => {});
+    },
+    [hapticsEnabled, soundEnabled, commitStatsUpdate, pushToast, displayTheme.accentHex, playerProfile, activeThemeId]
+  );
+
+  const unclaimedDailyCount = useMemo(() => {
+    const todayKey = getTodayDateKey();
+    const challenges = getDailyChallenges(todayKey);
+    if (playerStats.dailyProgress.date !== todayKey) return 0;
+    return challenges.filter((ch) => {
+      const val = playerStats.dailyProgress[ch.metric] || 0;
+      const done = val >= ch.target;
+      const claimed = playerStats.dailyProgress.claimedIds.includes(ch.id);
+      return done && !claimed;
+    }).length;
+  }, [playerStats]);
+
   const savePlayerProfile = (profile: PlayerProfile) => {
     setPlayerProfile(profile);
     setIsNameModalOpen(false);
     try {
       localStorage.setItem('creatyxo_player_profile', JSON.stringify(profile));
-      savePlayerToLeaderboard(profile, bestScore);
+      savePlayerToLeaderboard(profile, bestScore, playerStatsRef.current, activeThemeId);
     } catch {
       // ignore
     }
@@ -367,59 +689,219 @@ export default function App() {
       setBestScore(score);
       try {
         localStorage.setItem('creatyxo_best_score', score.toString());
-        savePlayerToLeaderboard(playerProfile, score).catch(() => {});
+        savePlayerToLeaderboard(playerProfile, score, playerStatsRef.current, activeThemeId).catch(() => {});
       } catch {
         // Ignore
       }
     }
-  }, [score, bestScore, modeBestScore, difficultyMode, playerProfile]);
+  }, [score, bestScore, modeBestScore, difficultyMode, playerProfile, activeThemeId]);
 
-  // Initial sync: Ensure any existing best score is pushed to the global leaderboard
+  // Initial sync: Ensure any existing best score & stats are pushed to the global leaderboard
   useEffect(() => {
-    if (bestScore > 0) {
-      savePlayerToLeaderboard(playerProfile, bestScore).catch(() => {});
-    }
+    savePlayerToLeaderboard(playerProfile, bestScore, playerStatsRef.current, activeThemeId).catch(() => {});
   }, []);
 
-  // Compute player global rank from shared leaderboard
+  // Compute player global rank & live players list from shared leaderboard
   const [userRank, setUserRank] = useState<number>(() => {
-    return buildLeaderboard(playerProfile, bestScore).userRank;
+    return buildLeaderboard(playerProfile, bestScore, playerStats, activeThemeId).userRank;
   });
 
-  useEffect(() => {
-    fetchSharedLeaderboard(playerProfile, bestScore)
+  const refreshGlobalPlayers = useCallback(() => {
+    fetchSharedLeaderboard(playerProfile, bestScore, playerStats, activeThemeId)
       .then((data) => {
         if (data && typeof data.userRank === 'number') {
           setUserRank(data.userRank);
         }
+        if (data && Array.isArray(data.list)) {
+          setAllPlayers(data.list);
+        }
       })
       .catch(() => {});
-  }, [playerProfile, bestScore]);
+  }, [playerProfile, bestScore, playerStats, activeThemeId]);
+
+  useEffect(() => {
+    refreshGlobalPlayers();
+    const unsub = subscribeToLeaderboardUpdates(() => {
+      refreshGlobalPlayers();
+    });
+    return () => {
+      unsub();
+    };
+  }, [refreshGlobalPlayers]);
+
+  // Friendships real-time sync
+  const refreshFriendshipsList = useCallback(() => {
+    loadFriendships(currentPlayerId)
+      .then((list) => setFriendships(list))
+      .catch(() => {});
+  }, [currentPlayerId]);
+
+  useEffect(() => {
+    refreshFriendshipsList();
+    const unsub = listenToFriendships(currentPlayerId, (list) => {
+      setFriendships(list);
+    });
+    return () => {
+      unsub();
+    };
+  }, [currentPlayerId, refreshFriendshipsList]);
+
+  const acceptedFriendCount = useMemo(
+    () => friendships.filter((f) => f.status === 'accepted').length,
+    [friendships]
+  );
+
+  const incomingFriendRequestsCount = useMemo(
+    () =>
+      friendships.filter(
+        (f) => f.status === 'pending' && f.toId === currentPlayerId
+      ).length,
+    [friendships, currentPlayerId]
+  );
+
+  const handleSendFriendRequest = useCallback(
+    async (target: LeaderboardEntry) => {
+      triggerHaptic('tap', hapticsEnabled);
+      const ok = await sendFriendRequest(
+        currentPlayerId,
+        playerProfile.username,
+        target.id,
+        target.username
+      );
+      refreshFriendshipsList();
+      if (ok) {
+        pushToast(
+          'FRIEND REQUEST SENT',
+          `Waiting for ${target.username} to accept`,
+          displayTheme.accentHex
+        );
+      } else {
+        pushToast(
+          'REQUEST FAILED',
+          'Could not reach server. Try again.',
+          '#fb7185'
+        );
+      }
+    },
+    [currentPlayerId, playerProfile.username, hapticsEnabled, refreshFriendshipsList, pushToast, displayTheme.accentHex]
+  );
+
+  const handleAcceptFriendRequest = useCallback(
+    async (friendshipId: string) => {
+      triggerHaptic('clear', hapticsEnabled);
+      const ok = await respondToFriendRequest(friendshipId, 'accepted');
+      refreshFriendshipsList();
+      if (ok) {
+        pushToast(
+          'FRIEND ADDED',
+          'You are now connected on Creatyxo!',
+          '#34d399'
+        );
+      }
+    },
+    [hapticsEnabled, refreshFriendshipsList, pushToast]
+  );
+
+  const handleDeclineFriendRequest = useCallback(
+    async (friendshipId: string) => {
+      triggerHaptic('tap', hapticsEnabled);
+      await respondToFriendRequest(friendshipId, 'declined');
+      refreshFriendshipsList();
+      pushToast('REQUEST DECLINED', 'Friend request dismissed', '#94a3b8');
+    },
+    [hapticsEnabled, refreshFriendshipsList, pushToast]
+  );
+
+  const handleRemoveFriendship = useCallback(
+    async (friendshipId: string) => {
+      triggerHaptic('tap', hapticsEnabled);
+      await removeFriendship(friendshipId);
+      refreshFriendshipsList();
+      pushToast('UPDATED', 'Friend connection removed', '#94a3b8');
+    },
+    [hapticsEnabled, refreshFriendshipsList, pushToast]
+  );
+
+  const finalizeCurrentRun = useCallback(
+    (isNaturalGameOver: boolean) => {
+      if (!hasPlacedInSessionRef.current || sessionFinalizedRef.current) return;
+      sessionFinalizedRef.current = true;
+
+      const todayKey = getTodayDateKey();
+      const todayChallenges = getDailyChallenges(todayKey);
+      const featuredChallenge = todayChallenges.find((c) => c.metric === 'featuredGamesToday');
+      const isFeaturedMode =
+        Boolean(featuredChallenge?.featuredMode) &&
+        featuredChallenge?.featuredMode === difficultyMode;
+
+      const nextStats = commitStatsUpdate((prev) => {
+        const daily =
+          prev.dailyProgress.date === todayKey
+            ? prev.dailyProgress
+            : createEmptyDailyProgress(todayKey);
+
+        return {
+          ...prev,
+          xp: prev.xp + (isNaturalGameOver ? 20 : 0),
+          gamesPlayed: prev.gamesPlayed + 1,
+          dailyProgress: {
+            ...daily,
+            gamesToday: daily.gamesToday + 1,
+            featuredGamesToday: daily.featuredGamesToday + (isFeaturedMode ? 1 : 0),
+          },
+        };
+      }, scoreRef.current);
+
+      savePlayerToLeaderboard(
+        playerProfile,
+        Math.max(bestScoreRef.current, scoreRef.current),
+        nextStats,
+        activeThemeId
+      ).catch(() => {});
+    },
+    [difficultyMode, commitStatsUpdate, playerProfile, activeThemeId]
+  );
 
   // Restart / Reset game for active (or specified) difficulty mode
   const resetGame = useCallback(
     (targetMode?: DifficultyModeId) => {
+      finalizeCurrentRun(false);
       triggerHaptic('tap', hapticsEnabled);
       const modeToUse = targetMode || difficultyMode;
       const cfg = getDifficultyConfig(modeToUse);
       const empty = createEmptyGrid(cfg.boardSize);
+      const freshTray = getRandomPieces(3, empty, modeToUse);
+      gridRef.current = empty;
+      trayRef.current = freshTray;
+      draggingRef.current = null;
       setGrid(empty);
-      setTray(getRandomPieces(3, empty, modeToUse));
+      setTray(freshTray);
       setScore(0);
       setCombo(0);
       setTotalLinesCleared(0);
       setMaxCombo(0);
+      setSessionElapsedSec(0);
+      sessionElapsedRef.current = 0;
+      hasPlacedInSessionRef.current = false;
+      sessionFinalizedRef.current = false;
       setIsNewRecord(false);
       setIsGameOver(false);
       setIsPaused(false);
       setClearingCells(new Set());
       setClearingRows([]);
       setClearingCols([]);
+      setComboFlareBurst(null);
+      if (comboFlareTimeoutRef.current !== null) {
+        window.clearTimeout(comboFlareTimeoutRef.current);
+        comboFlareTimeoutRef.current = null;
+      }
       setDragging(null);
       setPreviewPlacement(null);
       lastPreviewRef.current = null;
+      setPreviewThemeId(null);
+      setPreviewBlockSkinId(null);
     },
-    [hapticsEnabled, difficultyMode]
+    [hapticsEnabled, difficultyMode, finalizeCurrentRun]
   );
 
   // Switch difficulty mode & board size cleanly
@@ -442,13 +924,24 @@ export default function App() {
 
   const openLeaderboard = (from: 'home' | 'game') => {
     triggerHaptic('tap', hapticsEnabled);
+    setPreviewThemeId(null);
+    setPreviewBlockSkinId(null);
     setPreviousScreen(from);
     setActiveScreen('ranking');
   };
 
-  // Start game flow directly
+  // Start game flow directly (auto-resets if the previous board had no moves left)
   const handleStartGame = () => {
     triggerHaptic('tap', hapticsEnabled);
+    setPreviewThemeId(null);
+    setPreviewBlockSkinId(null);
+    const activePieces = trayRef.current.filter((p): p is PieceShape => p !== null);
+    const hasMove =
+      activePieces.length > 0 &&
+      activePieces.some((p) => canPieceFitAnywhere(gridRef.current, p));
+    if (isGameOver || !hasMove) {
+      resetGame(difficultyMode);
+    }
     if (musicEnabled) {
       startBackgroundMusic(true);
     }
@@ -588,20 +1081,23 @@ export default function App() {
   // Global Pointer Listeners for Smooth Drag and Drop
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
-      if (!draggingRef.current) return;
+      const current = draggingRef.current;
+      if (!current) return;
+      if (current.pointerId !== undefined && e.pointerId !== current.pointerId) return;
       e.preventDefault();
 
-      const current = draggingRef.current;
       const moved =
         current.hasMoved ||
         Math.hypot(e.clientX - current.startX, e.clientY - current.startY) >= 8;
 
-      setDragging({
+      const updatedDragging: DraggingPieceState = {
         ...current,
         pointerX: e.clientX,
         pointerY: e.clientY,
         hasMoved: moved,
-      });
+      };
+      draggingRef.current = updatedDragging;
+      setDragging(updatedDragging);
 
       const placement = moved
         ? calculateTargetPlacement(e.clientX, e.clientY, current.piece, current.isTouch)
@@ -618,9 +1114,23 @@ export default function App() {
       setPreviewPlacement(placement);
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (e: PointerEvent) => {
       const currentDragging = draggingRef.current;
       if (!currentDragging) return;
+      if (
+        currentDragging.pointerId !== undefined &&
+        e.pointerId !== currentDragging.pointerId
+      ) {
+        return;
+      }
+
+      // Synchronously clear draggingRef so pointerup + pointercancel or rapid double-events can never replay a drop
+      draggingRef.current = null;
+      lastPreviewRef.current = null;
+      setDragging(null);
+      setPreviewPlacement(null);
+
+      if (isGameOver || isPaused) return;
 
       const boardEl = boardRef.current;
       const placement = currentDragging.hasMoved
@@ -634,6 +1144,10 @@ export default function App() {
 
       if (boardEl && placement) {
         const { piece, trayIndex } = currentDragging;
+        // Verify the tray slot still holds this piece and target cells are free
+        if (!trayRef.current[trayIndex]) return;
+        if (!canPlacePiece(gridRef.current, piece, placement.r, placement.c)) return;
+
         const targetR = placement.r;
         const targetC = placement.c;
 
@@ -679,6 +1193,9 @@ export default function App() {
 
         const linesCleared = rowsToClear.length + colsToClear.length;
         const basePoints = placedBlockCount * 10;
+        hasPlacedInSessionRef.current = true;
+        let totalPointsGained = basePoints;
+        let activeComboForMove = 0;
 
         if (linesCleared > 0) {
           const cellsMarked = new Set<string>();
@@ -706,36 +1223,33 @@ export default function App() {
           });
 
           const nextCombo = combo + 1;
+          activeComboForMove = nextCombo;
           setCombo(nextCombo);
           setMaxCombo((prev) => Math.max(prev, nextCombo));
           setTotalLinesCleared((prev) => prev + linesCleared);
 
-          playClearSound(nextCombo, linesCleared, soundEnabled);
+          // Consecutive Combo Multiplier: 1x, 1.5x, 2.0x, 2.5x, 3.0x, etc.
+          const comboMultiplier = 1 + Math.max(0, nextCombo - 1) * 0.5;
+
+          playClearSound(nextCombo, linesCleared, soundEnabled, comboMultiplier);
           triggerClearHaptic(linesCleared, nextCombo, hapticsEnabled);
 
           // Rich Multiplier Calculations:
-          // 1. Line Clear Multiplier: 1 line = 150 pts, 2 lines = 450 pts (2x), 3 lines = 900 pts (3.5x), 4+ lines = 1600 pts (5x)
           let baseLinePoints = 150;
-          let clearTitle = 'SINGLE CLEAR';
           if (linesCleared === 2) {
             baseLinePoints = 450;
-            clearTitle = 'DOUBLE CLEAR! 2x';
           } else if (linesCleared === 3) {
             baseLinePoints = 900;
-            clearTitle = 'TRIPLE BLAST! 3x';
           } else if (linesCleared >= 4) {
             baseLinePoints = 1600;
-            clearTitle = 'MEGA CRUSH! 5x';
           }
 
-          // 2. Consecutive Combo Multiplier: 1x, 1.5x, 2.0x, 2.5x, 3.0x, etc.
-          const comboMultiplier = 1 + Math.max(0, nextCombo - 1) * 0.5;
           const clearScore = Math.round(baseLinePoints * comboMultiplier);
-          const totalPointsGained = basePoints + clearScore;
+          totalPointsGained = basePoints + clearScore;
 
           setScore((prev) => prev + totalPointsGained);
 
-          // 3. Spawn Flying Message showing ONLY the multiplier (1x, 2x, 3x...) and points number
+          // Spawn Flying Message showing ONLY the multiplier (1x, 2x, 3x...) and points number
           const msgId = `${Date.now()}-${Math.random()}`;
           const currentMultiplier = Math.max(1, linesCleared, nextCombo);
           const newMsg: FlyingClearMessage = {
@@ -747,7 +1261,7 @@ export default function App() {
                 ? '#f43f5e'
                 : currentMultiplier === 2
                 ? '#f6c445'
-                : '#3debe0',
+                : activeTheme.accentHex,
           };
 
           setFlyingMessages((prev) => [...prev.slice(-2), newMsg]);
@@ -764,12 +1278,68 @@ export default function App() {
           setTimeout(() => {
             setIsBoardShaking(false);
           }, 360);
+
+          if (nextCombo >= 5) {
+            const burstId = `flare-${Date.now()}-${nextCombo}`;
+            setComboFlareBurst({
+              id: burstId,
+              combo: nextCombo,
+              isInitialTierUnlock: nextCombo === 5,
+              accentHex: activeTheme.accentHex,
+            });
+            if (comboFlareTimeoutRef.current !== null) {
+              window.clearTimeout(comboFlareTimeoutRef.current);
+            }
+            comboFlareTimeoutRef.current = window.setTimeout(() => {
+              setComboFlareBurst((prev) => (prev?.id === burstId ? null : prev));
+              comboFlareTimeoutRef.current = null;
+            }, 1450);
+          }
         } else {
           setCombo(0);
           setScore((prev) => prev + basePoints);
           playPlaceSound(soundEnabled);
           triggerHaptic('place', hapticsEnabled);
         }
+
+        // Update XP, achievement progress, and daily challenge stats
+        const projectedRunScore = scoreRef.current + totalPointsGained;
+        const xpGained =
+          placedBlockCount * 2 +
+          linesCleared * 20 +
+          (activeComboForMove > 1 ? activeComboForMove * 12 : 0);
+        const todayKey = getTodayDateKey();
+
+        commitStatsUpdate((prev) => {
+          const daily =
+            prev.dailyProgress.date === todayKey
+              ? prev.dailyProgress
+              : createEmptyDailyProgress(todayKey);
+
+          return {
+            ...prev,
+            xp: prev.xp + xpGained,
+            totalBlocksPlaced: prev.totalBlocksPlaced + placedBlockCount,
+            totalLinesCleared: prev.totalLinesCleared + linesCleared,
+            bestCombo: Math.max(prev.bestCombo, activeComboForMove),
+            bestSingleMoveLines: Math.max(prev.bestSingleMoveLines, linesCleared),
+            extremeBestScore:
+              difficultyMode === 'extreme'
+                ? Math.max(prev.extremeBestScore, projectedRunScore)
+                : prev.extremeBestScore,
+            hardBestScore:
+              difficultyMode === 'hard'
+                ? Math.max(prev.hardBestScore, projectedRunScore)
+                : prev.hardBestScore,
+            dailyProgress: {
+              ...daily,
+              linesClearedToday: daily.linesClearedToday + linesCleared,
+              blocksPlacedToday: (daily.blocksPlacedToday || 0) + placedBlockCount,
+              bestScoreToday: Math.max(daily.bestScoreToday, projectedRunScore),
+              bestComboToday: Math.max(daily.bestComboToday, activeComboForMove),
+            },
+          };
+        }, projectedRunScore);
 
         // If tray is empty, spawn 3 new mode-compatible pieces that fit on the board
         const remainingPieces = nextTray.filter((p): p is PieceShape => p !== null);
@@ -778,6 +1348,9 @@ export default function App() {
           finalTray = getRandomPieces(3, newGrid, difficultyMode);
         }
 
+        // Sync refs immediately alongside React state so rapid moves never read stale grid/tray
+        gridRef.current = newGrid;
+        trayRef.current = finalTray;
         setGrid(newGrid);
         setTray(finalTray);
 
@@ -789,13 +1362,10 @@ export default function App() {
           setIsGameOver(true);
           playGameOverSound(soundEnabled);
           setTimeout(() => triggerHaptic('gameOver', hapticsEnabled), 160);
-          savePlayerToLeaderboard(playerProfile, Math.max(score, bestScore)).catch(() => {});
+          scoreRef.current = projectedRunScore;
+          finalizeCurrentRun(true);
         }
       }
-
-      lastPreviewRef.current = null;
-      setDragging(null);
-      setPreviewPlacement(null);
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: false });
@@ -807,7 +1377,18 @@ export default function App() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [calculateTargetPlacement, combo, soundEnabled, hapticsEnabled, difficultyMode]);
+  }, [
+    calculateTargetPlacement,
+    combo,
+    soundEnabled,
+    hapticsEnabled,
+    difficultyMode,
+    activeTheme.accentHex,
+    commitStatsUpdate,
+    finalizeCurrentRun,
+    isGameOver,
+    isPaused,
+  ]);
 
   // Pointer Down on Tray Piece
   const handlePointerDownPiece = (
@@ -816,21 +1397,24 @@ export default function App() {
     trayIndex: number
   ) => {
     e.preventDefault();
-    if (isGameOver || isPaused) return;
+    if (isGameOver || isPaused || isPreviewingCosmetic) return;
 
     playPickSound(soundEnabled);
     triggerHaptic('pick', hapticsEnabled);
 
-    setDragging({
+    const nextDragging: DraggingPieceState = {
       piece,
       trayIndex,
+      pointerId: e.pointerId,
       pointerX: e.clientX,
       pointerY: e.clientY,
       startX: e.clientX,
       startY: e.clientY,
       hasMoved: false,
       isTouch: e.pointerType === 'touch',
-    });
+    };
+    draggingRef.current = nextDragging;
+    setDragging(nextDragging);
 
     lastPreviewRef.current = null;
     setPreviewPlacement(null);
@@ -876,13 +1460,15 @@ export default function App() {
           row.map((cell, c) => (
             <div
               key={`${r}-${c}`}
-              className={`rounded-[3px] transition-all ${
+              className={`relative overflow-hidden rounded-[3px] transition-all ${
                 cell === 1
                   ? `${theme.solid} ${theme.shadow} border ${theme.border}`
                   : 'bg-transparent'
               }`}
               style={{ width: `${cellPx}px`, height: `${cellPx}px` }}
-            />
+            >
+              {cell === 1 && <BlockSkinOverlay skinId={displayBlockSkinId} compact />}
+            </div>
           ))
         )}
       </div>
@@ -930,13 +1516,20 @@ export default function App() {
             row.map((cell, c) => (
               <div
                 key={`drag-${r}-${c}`}
-                className={`${cellRadius} transition-all ${
+                className={`relative overflow-hidden ${cellRadius} transition-all ${
                   cell === 1
                     ? `${theme.solid} ${theme.shadow} border ${theme.border}`
                     : 'bg-transparent'
                 }`}
                 style={{ width: `${cellPx}px`, height: `${cellPx}px` }}
-              />
+              >
+                {cell === 1 && (
+                  <BlockSkinOverlay
+                    skinId={displayBlockSkinId}
+                    compact={boardSize >= 10}
+                  />
+                )}
+              </div>
             ))
           )}
         </div>
@@ -944,12 +1537,43 @@ export default function App() {
     );
   };
 
+  const myLeaderboardEntry = useMemo(
+    () => buildLeaderboard(playerProfile, bestScore, playerStats, activeThemeId).userEntry,
+    [playerProfile, bestScore, playerStats, activeThemeId]
+  );
+
+  const selectedProfileEntry = useMemo(() => {
+    if (isMyProfileOpen) return myLeaderboardEntry;
+    if (selectedPlayerProfileId) {
+      return allPlayers.find((p) => p.id === selectedPlayerProfileId) || null;
+    }
+    return null;
+  }, [isMyProfileOpen, myLeaderboardEntry, selectedPlayerProfileId, allPlayers]);
+
+  const playerLevelInfo = useMemo(() => getLevelInfo(playerStats.xp), [playerStats.xp]);
+
+  // Combo Meter derived visuals
+  const comboMultiplierValue = combo >= 2 ? 1 + (combo - 1) * 0.5 : 1;
+  const comboMeterPercent = combo >= 1 ? Math.min(100, Math.round((combo / 5) * 100)) : 0;
+  const comboTierInfo = useMemo(() => {
+    if (combo >= 5) return { label: 'HYPERNOVA', color: '#f43f5e' };
+    if (combo === 4) return { label: 'OVERDRIVE', color: '#fb7185' };
+    if (combo === 3) return { label: 'BLAZING', color: '#f59e0b' };
+    if (combo === 2) return { label: 'HOT STREAK', color: '#fbbf24' };
+    if (combo === 1) return { label: 'PRIMED', color: displayTheme.accentHex };
+    return { label: 'READY', color: '#64748b' };
+  }, [combo, displayTheme.accentHex]);
+
   return (
-    <div className="w-full h-full h-[100dvh] max-h-[100dvh] bg-[#070a11] text-slate-100 flex flex-col items-center justify-center select-none font-['Orbitron',sans-serif] overflow-hidden p-3 sm:p-5 touch-none">
-      {/* Name Setup / Callsign Modal */}
+    <div
+      style={{ backgroundColor: displayTheme.outerBg }}
+      className="w-full h-full h-[100dvh] max-h-[100dvh] text-slate-100 flex flex-col items-center justify-center select-none font-['Orbitron',sans-serif] overflow-hidden p-3 sm:p-5 touch-none transition-colors duration-300"
+    >
+      {/* Name & Profile Picture Modal */}
       <NameSetupModal
         isOpen={isNameModalOpen}
         currentProfile={playerProfile}
+        activeTheme={displayTheme}
         onSave={savePlayerProfile}
         onClose={() => setIsNameModalOpen(false)}
         isInitialSetup={!playerProfile.hasChosenName}
@@ -963,6 +1587,7 @@ export default function App() {
         hapticsEnabled={hapticsEnabled}
         soundVolume={soundVolume}
         musicVolume={musicVolume}
+        activeTheme={displayTheme}
         onToggleSound={toggleSound}
         onToggleMusic={toggleMusic}
         onToggleHaptics={toggleHaptics}
@@ -971,10 +1596,145 @@ export default function App() {
         onClose={() => setIsAudioSettingsOpen(false)}
       />
 
+      {/* Visual Themes & Block Skins Modal */}
+      <ThemesModal
+        isOpen={isThemesOpen}
+        initialTab={themesModalTab}
+        activeThemeId={activeThemeId}
+        previewThemeId={previewThemeId}
+        activeTheme={displayTheme}
+        unlockedAchievements={playerStats.unlockedAchievements}
+        activeBlockSkinId={activeBlockSkinId}
+        previewBlockSkinId={previewBlockSkinId}
+        bestDailyStreak={Math.max(playerStats.dailyStreak, playerStats.bestDailyStreak)}
+        unlockedBlockSkins={playerStats.unlockedBlockSkins || ['classic-gloss']}
+        onSelectTheme={handleSelectTheme}
+        onPreviewTheme={handlePreviewTheme}
+        onSelectBlockSkin={handleSelectBlockSkin}
+        onPreviewBlockSkin={handlePreviewBlockSkin}
+        onClose={() => {
+          setIsThemesOpen(false);
+          setPreviewThemeId(null);
+          setPreviewBlockSkinId(null);
+        }}
+      />
+
+      {/* Full-Size Gameplay-Look Cosmetic Preview Popup */}
+      <CosmeticPreviewModal
+        isOpen={isPreviewingCosmetic}
+        previewTheme={previewThemeId ? getGameTheme(previewThemeId) : activeTheme}
+        previewSkinId={previewBlockSkinId || activeBlockSkinId}
+        previewLabel={
+          previewThemeId
+            ? `${getGameTheme(previewThemeId).name} THEME (LOCKED)`
+            : previewBlockSkinId
+            ? `${BLOCK_SKINS[previewBlockSkinId].name} SKIN (${BLOCK_SKINS[previewBlockSkinId].requiredStreakDays}D STREAK)`
+            : ''
+        }
+        accentHex={
+          previewBlockSkinId
+            ? BLOCK_SKINS[previewBlockSkinId].accentHex
+            : previewThemeId
+            ? getGameTheme(previewThemeId).accentHex
+            : activeTheme.accentHex
+        }
+        boardSize={boardSize}
+        difficultyMode={difficultyMode}
+        playerLevel={playerLevelInfo.level}
+        modeBestScore={modeBestScore}
+        userRank={userRank}
+        onClose={handleCloseCosmeticPreview}
+      />
+
+      {/* Daily Challenges, Streak & Achievements Modal */}
+      <ProgressionModal
+        isOpen={progressionModalTab !== null}
+        initialTab={progressionModalTab || 'daily'}
+        playerStats={playerStats}
+        bestScore={bestScore}
+        activeTheme={displayTheme}
+        onClaimChallenge={handleClaimDailyChallenge}
+        onOpenThemes={() => {
+          setProgressionModalTab(null);
+          setThemesModalTab('themes');
+          setIsThemesOpen(true);
+        }}
+        onOpenBlockSkins={() => {
+          setProgressionModalTab(null);
+          setThemesModalTab('skins');
+          setIsThemesOpen(true);
+        }}
+        onClose={() => setProgressionModalTab(null)}
+      />
+
+      {/* Friends & Mutual Requests Modal */}
+      <FriendsModal
+        isOpen={isFriendsOpen}
+        currentPlayerId={currentPlayerId}
+        allPlayers={allPlayers}
+        friendships={friendships}
+        activeTheme={displayTheme}
+        onSendRequest={handleSendFriendRequest}
+        onAcceptRequest={handleAcceptFriendRequest}
+        onDeclineRequest={handleDeclineFriendRequest}
+        onRemoveFriendship={handleRemoveFriendship}
+        onSelectPlayer={(entry) => setSelectedPlayerProfileId(entry.id)}
+        onClose={() => setIsFriendsOpen(false)}
+      />
+
+      {/* Player Profile Modal (Self or Selected Friend) */}
+      <PlayerProfileModal
+        entry={selectedProfileEntry}
+        playerStats={playerStats}
+        activeTheme={displayTheme}
+        currentPlayerId={currentPlayerId}
+        friendships={friendships}
+        onEditName={() => setIsNameModalOpen(true)}
+        onSendFriendRequest={handleSendFriendRequest}
+        onAcceptFriendRequest={handleAcceptFriendRequest}
+        onDeclineFriendRequest={handleDeclineFriendRequest}
+        onRemoveFriendship={handleRemoveFriendship}
+        onClose={() => {
+          setIsMyProfileOpen(false);
+          setSelectedPlayerProfileId(null);
+        }}
+      />
+
       {/* Main Container: Well inset from screen edges on all devices */}
       <main
-        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-[96vh] rounded-2xl sm:rounded-3xl border border-[#1b263d] shadow-2xl flex flex-col mx-auto relative bg-[#070a11] overflow-hidden p-3.5 sm:p-6 justify-between"
+        style={{
+          backgroundColor: displayTheme.cardBg,
+          borderColor: displayTheme.cardBorder,
+        }}
+        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-[96vh] rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col mx-auto relative overflow-hidden px-4 py-3.5 sm:px-6 sm:py-5 justify-between transition-colors duration-300"
       >
+        {/* Non-blocking Achievement / Streak / Friend Toast Banners */}
+        {toastNotices.length > 0 && (
+          <div className="absolute top-3 left-3 right-3 z-50 pointer-events-none flex flex-col items-center gap-1.5">
+            {toastNotices.map((toast) => (
+              <div
+                key={toast.id}
+                style={{
+                  backgroundColor: displayTheme.surfaceBg,
+                  borderColor: toast.accent,
+                  boxShadow: `0 6px 24px rgba(0,0,0,0.65), 0 0 14px ${displayTheme.accentGlowRgba}`,
+                }}
+                className="w-full max-w-[330px] rounded-xl border px-3 py-2 flex flex-col items-center text-center animate-fadeIn"
+              >
+                <span
+                  style={{ color: toast.accent }}
+                  className="text-[10.5px] font-black font-['Orbitron',sans-serif] tracking-wider"
+                >
+                  {toast.title}
+                </span>
+                <span className="text-[9px] font-bold text-slate-200 font-['Orbitron',sans-serif] mt-0.5">
+                  {toast.subtitle}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* VIEW 1: HOME SCREEN */}
         {activeScreen === 'home' && (
           <HomeScreen
@@ -983,15 +1743,24 @@ export default function App() {
             modeBestScore={modeBestScore}
             difficultyMode={difficultyMode}
             userRank={userRank}
-            soundEnabled={soundEnabled}
-            musicEnabled={musicEnabled}
-            onToggleSound={toggleSound}
-            onToggleMusic={toggleMusic}
+            playerStats={playerStats}
+            activeTheme={displayTheme}
+            unclaimedDailyCount={unclaimedDailyCount}
+            friendCount={acceptedFriendCount}
+            incomingFriendRequests={incomingFriendRequestsCount}
             onOpenAudioSettings={() => setIsAudioSettingsOpen(true)}
             onSelectDifficulty={handleSelectDifficulty}
             onStartGame={handleStartGame}
             onOpenLeaderboard={() => openLeaderboard('home')}
             onOpenNameModal={() => setIsNameModalOpen(true)}
+            onOpenMyProfile={() => setIsMyProfileOpen(true)}
+            onOpenDaily={() => setProgressionModalTab('daily')}
+            onOpenAchievements={() => setProgressionModalTab('achievements')}
+            onOpenThemes={() => {
+              setThemesModalTab('themes');
+              setIsThemesOpen(true);
+            }}
+            onOpenFriends={() => setIsFriendsOpen(true)}
           />
         )}
 
@@ -1000,17 +1769,27 @@ export default function App() {
           <LeaderboardScreen
             playerProfile={playerProfile}
             bestScore={bestScore}
+            playerStats={playerStats}
+            activeTheme={displayTheme}
+            equippedThemeId={activeThemeId}
+            friendships={friendships}
+            incomingFriendRequests={incomingFriendRequestsCount}
             onBack={() => setActiveScreen(previousScreen)}
             onPlayGame={() => setActiveScreen('game')}
             onOpenNameModal={() => setIsNameModalOpen(true)}
+            onOpenFriends={() => setIsFriendsOpen(true)}
+            onSendFriendRequest={handleSendFriendRequest}
+            onAcceptFriendRequest={handleAcceptFriendRequest}
+            onDeclineFriendRequest={handleDeclineFriendRequest}
+            onRemoveFriendship={handleRemoveFriendship}
           />
         )}
 
         {/* VIEW 3: GAMEPLAY SCREEN */}
         {activeScreen === 'game' && (
           <>
-            {/* Top Header Section: Corner buttons have 10px margin away from screen border */}
-            <header className="flex flex-col gap-3 w-full shrink-0 px-1 sm:px-2 pt-1">
+            {/* Top Header Section: Clean 8-10px breathing room from container sides */}
+            <header className="flex flex-col gap-2 w-full shrink-0 px-2 sm:px-2.5 pt-1">
               {/* Top Bar: Home, Title, Settings */}
               <div className="flex items-center justify-between w-full">
                 {/* Home Return Button (Top Left Corner: 10px margin from screen border, 4px from neighbors) */}
@@ -1018,8 +1797,15 @@ export default function App() {
                   type="button"
                   aria-label="Return to Home"
                   onClick={() => setActiveScreen('home')}
-                  style={{ marginLeft: 10, marginTop: 10, marginRight: 4, marginBottom: 4 }}
-                  className="btn-creatyxo-icon rounded-xl bg-[#121828] border border-[#1b263d] text-slate-300 hover:text-[#3debe0] hover:border-[#3debe0]/50 active:scale-95 transition-all cursor-pointer shadow-sm shrink-0"
+                  style={{
+                    marginLeft: 10,
+                    marginTop: 10,
+                    marginRight: 4,
+                    marginBottom: 4,
+                    backgroundColor: displayTheme.surfaceBg,
+                    borderColor: displayTheme.surfaceBorder,
+                  }}
+                  className="btn-creatyxo-icon rounded-xl border text-slate-300 hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm shrink-0"
                   title="Main Menu"
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -1029,14 +1815,21 @@ export default function App() {
 
                 <div className="flex flex-col items-center justify-center">
                   <h1
-                    className="text-xl sm:text-2xl tracking-wider text-[#3debe0] uppercase font-['Black_Ops_One',sans-serif] drop-shadow-[0_0_16px_rgba(61,235,224,0.35)] text-center px-2 select-none cursor-pointer flex items-center justify-center leading-none"
+                    style={{
+                      color: displayTheme.titleTextColor,
+                      filter: `drop-shadow(0 0 16px ${displayTheme.accentGlowRgba})`,
+                    }}
+                    className="text-xl sm:text-2xl tracking-wider uppercase font-['Black_Ops_One',sans-serif] text-center px-2 select-none cursor-pointer flex items-center justify-center leading-none"
                     onClick={() => setActiveScreen('home')}
                     title="Main Menu"
                   >
                     CREATYXO
                   </h1>
-                  <span className="text-[8.5px] font-bold tracking-[0.2em] text-slate-400 font-['Orbitron',sans-serif] mt-1">
-                    {boardSize}×{boardSize} • {activeDifficulty.label}
+                  <span className="text-[8.5px] font-bold tracking-[0.18em] text-slate-400 font-['Orbitron',sans-serif] mt-1">
+                    {boardSize}×{boardSize} • {activeDifficulty.label} •{' '}
+                    <span style={{ color: displayTheme.accentHex }}>
+                      LV.{playerLevelInfo.level}
+                    </span>
                   </span>
                 </div>
 
@@ -1051,8 +1844,10 @@ export default function App() {
                     marginRight: 10,
                     marginTop: 10,
                     marginBottom: 4,
+                    backgroundColor: displayTheme.surfaceBg,
+                    borderColor: displayTheme.surfaceBorder,
                   }}
-                  className="btn-creatyxo-icon rounded-xl border border-[#1b263d] bg-[#121828] text-slate-400 hover:text-[#3debe0] hover:border-[#3debe0]/50 cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+                  className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
                   title="Settings (Music & Sound)"
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -1063,67 +1858,107 @@ export default function App() {
 
               {/* Score Cards Row: 12px gap */}
               <div className="grid grid-cols-2 gap-3 w-full">
-                {/* Score Card */}
-                <div
-                  style={{ marginLeft: 15, marginRight: 0 }}
-                  className="bg-[#101625] border border-[#1b263d] rounded-2xl px-3.5 py-2.5 flex flex-col justify-center gap-1 shadow-sm min-h-[58px]"
-                >
-                  <div style={{ paddingLeft: 7 }} className="flex items-center justify-between">
-                    <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
-                      SCORE
-                    </span>
-                    {combo > 1 ? (
-                      <span
-                        style={{ paddingRight: 0, paddingLeft: 0, marginLeft: 0, marginRight: 9 }}
-                        className="text-[8px] font-bold text-[#f43f5e] bg-[#2d1523] border border-[#4d1f35] py-0.5 rounded-full font-['Orbitron',sans-serif] leading-normal"
-                      >
-                        COMBO {combo}x
-                      </span>
-                    ) : (
-                      <span
-                        style={{ paddingRight: 0, paddingLeft: 0, marginLeft: 0, marginRight: 9 }}
-                        className="text-[8px] font-bold text-slate-500 bg-[#141b2e] py-0.5 rounded-full font-['Orbitron',sans-serif] leading-normal"
-                      >
-                        1x
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{ marginLeft: 0, paddingLeft: 5 }}
-                    className="text-lg sm:text-xl font-black text-white tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums"
-                  >
-                    {score.toLocaleString()}
-                  </div>
-                </div>
+                {/* Animated Score Card */}
+                <ScoreCard
+                  score={score}
+                  combo={combo}
+                  activeTheme={displayTheme}
+                />
 
                 {/* Best Score Card */}
                 <div
-                  style={{ paddingRight: 10 }}
-                  className="bg-[#101625] border border-[#1b263d] rounded-2xl px-3.5 py-2.5 flex flex-col justify-center gap-1 shadow-sm min-h-[58px]"
+                  style={{
+                    backgroundColor: displayTheme.surfaceBg,
+                    borderColor: displayTheme.surfaceBorder,
+                  }}
+                  className="border rounded-2xl px-3.5 py-2 flex flex-col justify-center gap-0.5 shadow-sm min-h-[52px]"
                 >
-                  <div className="flex items-center justify-between">
-                    <span
-                      style={{ paddingLeft: 8 }}
-                      className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal"
-                    >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
                       BEST ({boardSize}×{boardSize})
                     </span>
                     <span className="text-[9.5px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-normal">
                       #{userRank}
                     </span>
                   </div>
-                  <div
-                    style={{ paddingLeft: 5 }}
-                    className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums"
-                  >
+                  <div className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums">
                     {modeBestScore.toLocaleString()}
                   </div>
+                </div>
+              </div>
+
+              {/* Live Combo Meter */}
+              <div
+                style={{
+                  backgroundColor: displayTheme.surfaceBg,
+                  borderColor:
+                    combo >= 5
+                      ? '#f43f5e'
+                      : combo >= 2
+                      ? comboTierInfo.color
+                      : displayTheme.surfaceBorder,
+                  boxShadow:
+                    combo >= 5
+                      ? `0 0 22px rgba(244, 63, 94, 0.55), 0 0 12px ${displayTheme.accentGlowRgba}`
+                      : combo >= 2
+                      ? `0 0 14px ${displayTheme.accentGlowRgba}`
+                      : undefined,
+                }}
+                className="border rounded-xl px-3 py-1.5 flex flex-col gap-1 transition-all duration-200"
+              >
+                <div className="flex items-center justify-between text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">COMBO METER</span>
+                    <span
+                      style={{ color: comboTierInfo.color }}
+                      className={combo >= 3 ? 'animate-pulse' : ''}
+                    >
+                      • {combo >= 5 ? `${comboTierInfo.label} ⚡` : comboTierInfo.label}
+                    </span>
+                  </div>
+                  <span style={{ color: combo >= 2 ? comboTierInfo.color : displayTheme.accentHex }}>
+                    {combo > 0 ? `${combo}×` : '0×'} ({comboMultiplierValue.toFixed(1)}× PTS)
+                  </span>
+                </div>
+
+                <div className="w-full h-1.5 rounded-full bg-[#11192a] overflow-hidden grid grid-cols-5 gap-1 p-[1px]">
+                  {[1, 2, 3, 4, 5].map((segment) => {
+                    const isLit = combo >= segment;
+                    return (
+                      <div
+                        key={segment}
+                        style={{
+                          backgroundColor: isLit
+                            ? combo >= 5
+                              ? segment === 5
+                                ? '#fde047'
+                                : '#f43f5e'
+                              : segment >= 4
+                              ? '#f43f5e'
+                              : segment >= 2
+                              ? '#fbbf24'
+                              : displayTheme.accentHex
+                            : '#1a253c',
+                          boxShadow: isLit
+                            ? `0 0 8px ${
+                                combo >= 5
+                                  ? '#f43f5e'
+                                  : segment >= 4
+                                  ? '#f43f5e'
+                                  : displayTheme.accentHex
+                              }`
+                            : undefined,
+                        }}
+                        className="h-full rounded-full transition-all duration-200"
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </header>
 
             {/* Center Playfield: Game Board + Block Spawning Tray */}
-            <div className="w-full flex-1 flex flex-col items-center justify-center gap-3 sm:gap-4 my-auto min-h-0">
+            <div className="w-full flex-1 flex flex-col items-center justify-center gap-2.5 sm:gap-3.5 my-auto min-h-0 px-2">
               {/* Game Board */}
               <section
                 aria-label="Game Board"
@@ -1133,15 +1968,20 @@ export default function App() {
                   ref={boardRef}
                   style={{
                     width: '100%',
-                    maxWidth: 310,
+                    maxWidth: 304,
                     aspectRatio: '1 / 1',
-                    backgroundColor: '#090d16',
+                    backgroundColor: displayTheme.boardBg,
                     padding: 10,
                     borderRadius: 18,
-                    border: '1px solid #162035',
-                    boxShadow: 'inset 0 2px 10px rgba(0, 0, 0, 0.7)',
+                    border: `1px solid ${combo >= 5 ? '#f43f5e' : displayTheme.boardBorder}`,
+                    boxShadow:
+                      combo >= 5
+                        ? 'inset 0 2px 14px rgba(244, 63, 94, 0.25), 0 0 20px rgba(244, 63, 94, 0.35)'
+                        : 'inset 0 2px 10px rgba(0, 0, 0, 0.7)',
                   }}
-                  className={`relative select-none touch-none ${isBoardShaking ? 'animate-board-shake' : ''}`}
+                  className={`relative select-none touch-none ${
+                    isBoardShaking ? 'animate-board-shake' : ''
+                  } ${comboFlareBurst ? 'animate-hypernova-board' : ''}`}
                 >
                   <div
                     className={`grid ${boardSize >= 10 ? 'gap-1' : 'gap-1 sm:gap-1.5'} w-full h-full relative`}
@@ -1171,16 +2011,33 @@ export default function App() {
                             key={`${r}-${c}`}
                             data-r={r}
                             data-c={c}
-                            className={`w-full h-full ${cellRadius} flex items-center justify-center transition-all duration-100 ${
+                            style={
+                              !isClearing && !theme
+                                ? {
+                                    backgroundColor: displayTheme.emptyCellBg,
+                                    borderColor: displayTheme.emptyCellBorder,
+                                    borderWidth: 1,
+                                    borderStyle: 'solid',
+                                  }
+                                : undefined
+                            }
+                            className={`relative overflow-hidden w-full h-full ${cellRadius} flex items-center justify-center transition-all duration-100 ${
                               isClearing
                                 ? 'animate-cell-blast z-20'
                                 : theme
                                 ? isPreview
                                   ? `${theme.preview} scale-[0.98] border animate-pulse`
                                   : `${theme.solid} ${theme.shadow} border ${theme.border}`
-                                : 'bg-[#101625] border border-[#172034]'
+                                : ''
                             }`}
-                          />
+                          >
+                            {theme && !isClearing && (
+                              <BlockSkinOverlay
+                                skinId={displayBlockSkinId}
+                                compact={boardSize >= 10}
+                              />
+                            )}
+                          </div>
                         );
                       })
                     )}
@@ -1190,11 +2047,12 @@ export default function App() {
                   {clearingRows.map((r) => (
                     <div
                       key={`laser-r-${r}`}
-                      className="absolute left-2.5 right-2.5 pointer-events-none z-30 animate-laser-row rounded-sm bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
+                      className="absolute left-2.5 right-2.5 pointer-events-none z-30 animate-laser-row rounded-sm bg-gradient-to-r from-transparent via-white to-transparent"
                       style={{
                         top: `calc(10px + ${r} * (100% - 20px) / ${boardSize})`,
                         height: `calc((100% - 20px) / ${boardSize})`,
                         transformOrigin: 'left center',
+                        boxShadow: `0 0 28px ${displayTheme.laserGlowHex}`,
                       }}
                     />
                   ))}
@@ -1203,11 +2061,12 @@ export default function App() {
                   {clearingCols.map((c) => (
                     <div
                       key={`laser-c-${c}`}
-                      className="absolute top-2.5 bottom-2.5 pointer-events-none z-30 animate-laser-col rounded-sm bg-gradient-to-b from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
+                      className="absolute top-2.5 bottom-2.5 pointer-events-none z-30 animate-laser-col rounded-sm bg-gradient-to-b from-transparent via-white to-transparent"
                       style={{
                         left: `calc(10px + ${c} * (100% - 20px) / ${boardSize})`,
                         width: `calc((100% - 20px) / ${boardSize})`,
                         transformOrigin: 'center top',
+                        boxShadow: `0 0 28px ${displayTheme.laserGlowHex}`,
                       }}
                     />
                   ))}
@@ -1237,12 +2096,15 @@ export default function App() {
                       </span>
                     </div>
                   ))}
+
+                  {/* Combo 5+ Level-Up Particle Flare & Shockwave */}
+                  <ComboFlareOverlay burst={comboFlareBurst} />
                 </div>
               </section>
 
               {/* Block Spawn Area (Piece Tray) */}
               <section aria-label="Piece Tray" className="w-full flex items-center justify-center">
-                <div className="grid grid-cols-3 gap-3 w-full max-w-[310px]">
+                <div className="relative grid grid-cols-3 gap-3 w-full max-w-[304px]">
                   {tray.map((piece, slotIdx) => {
                     const isCurrentlyDragging = dragging?.trayIndex === slotIdx;
 
@@ -1251,19 +2113,22 @@ export default function App() {
                         key={slotIdx}
                         data-tray-slot={slotIdx}
                         style={{
-                          height: 80,
+                          height: 76,
                           borderRadius: 16,
-                          backgroundColor: '#101625',
-                          border: '1px solid #192237',
+                          backgroundColor: displayTheme.surfaceBg,
+                          border: `1px solid ${displayTheme.surfaceBorder}`,
                         }}
-                        className="flex items-center justify-center relative touch-none select-none transition-transform active:scale-95 cursor-grab hover:border-[#223150]"
+                        className="flex items-center justify-center relative touch-none select-none transition-transform active:scale-95 cursor-grab hover:brightness-110"
                         onPointerDown={(e) => {
                           if (piece) handlePointerDownPiece(e, piece, slotIdx);
                         }}
                       >
                         {piece && !isCurrentlyDragging && renderMiniPiece(piece)}
                         {!piece && (
-                          <span className="w-2 h-2 rounded-full bg-[#192237]" />
+                          <span
+                            style={{ backgroundColor: displayTheme.surfaceBorder }}
+                            className="w-2 h-2 rounded-full"
+                          />
                         )}
                       </div>
                     );
@@ -1274,17 +2139,27 @@ export default function App() {
 
             {/* Bottom Navigation: Inset 10px from screen border with at least 4px separation between elements */}
             <nav
-              className="w-full flex items-center justify-around border-t border-[#141d30] pt-2 pb-2 px-2 sm:px-4 shrink-0 gap-2 mb-2.5"
+              style={{ borderColor: displayTheme.surfaceBorder }}
+              className="w-full flex items-center justify-around border-t pt-2 pb-2 px-2 sm:px-4 shrink-0 gap-2 mb-2.5"
               aria-label="Navigation"
             >
               {/* Play Tab (Bottom Left Corner: 10px margin from screen border) */}
               <button
                 type="button"
                 onClick={() => setActiveScreen('game')}
-                style={{ marginLeft: 10, marginBottom: 10, marginRight: 4, marginTop: 2 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-[#3debe0] cursor-pointer hover:bg-[#142036]/50 transition-colors box-border"
+                style={{
+                  marginLeft: 10,
+                  marginBottom: 10,
+                  marginRight: 4,
+                  marginTop: 2,
+                  color: displayTheme.accentHex,
+                }}
+                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer hover:bg-white/5 transition-colors box-border"
               >
-                <div className="w-5 h-5 rounded-lg bg-[#142236] flex items-center justify-center shrink-0">
+                <div
+                  style={{ backgroundColor: displayTheme.surfaceBg }}
+                  className="w-5 h-5 rounded-lg flex items-center justify-center shrink-0"
+                >
                   <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                     <rect x="3" y="3" width="7" height="7" rx="1.5" />
                     <rect x="14" y="3" width="7" height="7" rx="1.5" />
@@ -1302,7 +2177,7 @@ export default function App() {
                 type="button"
                 onClick={() => openLeaderboard('game')}
                 style={{ marginBottom: 10, marginLeft: 4, marginRight: 4, marginTop: 2 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-[#3debe0] cursor-pointer hover:bg-[#142036]/50 active:scale-95 transition-all box-border"
+                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-white cursor-pointer hover:bg-white/5 active:scale-95 transition-all box-border"
                 title="View Leaderboard"
               >
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
@@ -1320,7 +2195,7 @@ export default function App() {
                 type="button"
                 onClick={() => setIsPaused(true)}
                 style={{ marginRight: 10, marginBottom: 10, marginLeft: 4, marginTop: 2 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer hover:bg-[#142036]/50 transition-colors box-border"
+                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer hover:bg-white/5 transition-colors box-border"
               >
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
                   <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
@@ -1336,39 +2211,64 @@ export default function App() {
             {/* Pause / Settings Modal Overlay */}
             {isPaused && (
               <div className="absolute inset-0 bg-[#070a11]/90 backdrop-blur-sm z-40 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn select-none">
-                <div className="w-full max-w-[340px] bg-[#0c1220] border border-[#1b263d] rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-3.5">
-                  <div className="flex items-center justify-between border-b border-[#172238] pb-3 px-1">
+                <div
+                  style={{
+                    backgroundColor: displayTheme.cardBg,
+                    borderColor: displayTheme.cardBorder,
+                  }}
+                  className="w-full max-w-[340px] max-h-full overflow-y-auto border rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-3.5 custom-scrollbar"
+                >
+                  <div
+                    style={{ borderColor: displayTheme.surfaceBorder }}
+                    className="flex items-center justify-between border-b pb-3 px-1"
+                  >
                     <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider leading-normal">
                       GAME PAUSED
                     </h2>
-                    <span className="text-[10px] text-[#3debe0] font-['Orbitron',sans-serif] font-bold leading-normal">
+                    <span
+                      style={{ color: displayTheme.accentHex }}
+                      className="text-[10px] font-['Orbitron',sans-serif] font-bold leading-normal"
+                    >
                       SETTINGS
                     </span>
                   </div>
 
                   {/* Audio Volume Controls (Directly accessible in Pause) */}
-                  <div className="bg-[#101726] border border-[#19243a] rounded-xl p-3.5 flex flex-col gap-3 text-left">
+                  <div
+                    style={{
+                      backgroundColor: displayTheme.surfaceBg,
+                      borderColor: displayTheme.surfaceBorder,
+                    }}
+                    className="border rounded-xl p-3.5 flex flex-col gap-3 text-left"
+                  >
                     {/* Music Loudness */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
-                          <svg className="w-3.5 h-3.5 text-[#3debe0] fill-current" viewBox="0 0 24 24">
-                            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                          </svg>
+                          <span style={{ color: displayTheme.accentHex }}>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                            </svg>
+                          </span>
                           MUSIC
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-[#3debe0] font-['Orbitron',sans-serif] tabular-nums">
+                          <span
+                            style={{ color: displayTheme.accentHex }}
+                            className="text-[10px] font-black font-['Orbitron',sans-serif] tabular-nums"
+                          >
                             {Math.round(musicVolume * 100)}%
                           </span>
                           <button
                             type="button"
                             onClick={toggleMusic}
-                            className={`min-h-[52px] px-6 py-[14px] rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border ${
-                              musicEnabled
-                                ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                                : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-                            }`}
+                            style={{
+                              margin: 0,
+                              backgroundColor: musicEnabled ? displayTheme.boardBg : '#181f2f',
+                              borderColor: musicEnabled ? displayTheme.accentHex : '#25324b',
+                              color: musicEnabled ? displayTheme.accentHex : '#64748b',
+                            }}
+                            className="min-h-[44px] px-5 py-2 rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border"
                           >
                             {musicEnabled ? 'ON' : 'OFF'}
                           </button>
@@ -1381,6 +2281,7 @@ export default function App() {
                         step="1"
                         value={Math.round(musicVolume * 100)}
                         onChange={(e) => handleMusicVolumeChange(parseFloat(e.target.value) / 100)}
+                        style={{ accentColor: displayTheme.accentHex }}
                         className="cyber-slider w-full"
                         aria-label="Adjust background music loudness"
                       />
@@ -1390,23 +2291,30 @@ export default function App() {
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
-                          <svg className="w-3.5 h-3.5 text-[#3debe0] fill-current" viewBox="0 0 24 24">
-                            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-                          </svg>
+                          <span style={{ color: displayTheme.accentHex }}>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                            </svg>
+                          </span>
                           SOUND FX
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-[#3debe0] font-['Orbitron',sans-serif] tabular-nums">
+                          <span
+                            style={{ color: displayTheme.accentHex }}
+                            className="text-[10px] font-black font-['Orbitron',sans-serif] tabular-nums"
+                          >
                             {Math.round(soundVolume * 100)}%
                           </span>
                           <button
                             type="button"
                             onClick={toggleSound}
-                            className={`min-h-[52px] px-6 py-[14px] rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border ${
-                              soundEnabled
-                                ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                                : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-                            }`}
+                            style={{
+                              margin: 0,
+                              backgroundColor: soundEnabled ? displayTheme.boardBg : '#181f2f',
+                              borderColor: soundEnabled ? displayTheme.accentHex : '#25324b',
+                              color: soundEnabled ? displayTheme.accentHex : '#64748b',
+                            }}
+                            className="min-h-[44px] px-5 py-2 rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border"
                           >
                             {soundEnabled ? 'ON' : 'OFF'}
                           </button>
@@ -1423,33 +2331,44 @@ export default function App() {
                           handleSoundVolumeChange(val);
                           playSoundVolumePreview(val);
                         }}
+                        style={{ accentColor: displayTheme.accentHex }}
                         className="cyber-slider w-full"
                         aria-label="Adjust sound effects loudness"
                       />
                     </div>
 
                     {/* Haptic Feedback Toggle */}
-                    <div className="flex items-center justify-between pt-1 border-t border-[#182238]">
+                    <div
+                      style={{ borderColor: displayTheme.surfaceBorder }}
+                      className="flex items-center justify-between pt-2 border-t"
+                    >
                       <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
-                        <svg className="w-3.5 h-3.5 text-[#3debe0] fill-current" viewBox="0 0 24 24">
-                          <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
-                        </svg>
+                        <span style={{ color: displayTheme.accentHex }}>
+                          <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                            <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
+                          </svg>
+                        </span>
                         HAPTICS
                       </span>
                       <button
                         type="button"
                         onClick={toggleHaptics}
-                        className={`min-h-[44px] px-5 py-2 rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border ${
-                          hapticsEnabled
-                            ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
-                            : 'bg-[#181f2f] border-[#25324b] text-slate-500'
-                        }`}
+                        style={{
+                          margin: 0,
+                          backgroundColor: hapticsEnabled ? displayTheme.boardBg : '#181f2f',
+                          borderColor: hapticsEnabled ? displayTheme.accentHex : '#25324b',
+                          color: hapticsEnabled ? displayTheme.accentHex : '#64748b',
+                        }}
+                        className="min-h-[42px] px-5 py-2 rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border"
                       >
                         {hapticsEnabled ? 'ON' : 'OFF'}
                       </button>
                     </div>
                     {/* Switch Difficulty / Board Size */}
-                    <div className="pt-2 border-t border-[#182238]">
+                    <div
+                      style={{ borderColor: displayTheme.surfaceBorder }}
+                      className="pt-2 border-t"
+                    >
                       <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider block mb-1.5">
                         BOARD SIZE & DIFFICULTY
                       </span>
@@ -1462,12 +2381,13 @@ export default function App() {
                               key={modeId}
                               type="button"
                               onClick={() => handleSelectDifficulty(modeId)}
-                              style={{ margin: 0 }}
-                              className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg border transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'bg-[#17303d] border-[#3debe0] text-[#3debe0]'
-                                  : 'bg-[#141b2e] border-[#222f4b] text-slate-400 hover:text-slate-200'
-                              }`}
+                              style={{
+                                margin: 0,
+                                backgroundColor: isSelected ? displayTheme.boardBg : '#141b2e',
+                                borderColor: isSelected ? displayTheme.accentHex : '#222f4b',
+                                color: isSelected ? displayTheme.accentHex : '#94a3b8',
+                              }}
+                              className="flex flex-col items-center justify-center py-1.5 px-1 rounded-lg border transition-all cursor-pointer"
                             >
                               <span className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight">
                                 {cfg.boardSize}×{cfg.boardSize}
@@ -1483,11 +2403,42 @@ export default function App() {
                   </div>
 
                   {/* Navigation Actions: 12px gap, at least 4px separation */}
-                  <div className="flex flex-col gap-3 pt-1">
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPaused(false);
+                          setIsThemesOpen(true);
+                        }}
+                        style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                        className="btn-creatyxo rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                      >
+                        THEMES
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPaused(false);
+                          setProgressionModalTab('daily');
+                        }}
+                        style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                        className="btn-creatyxo rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                      >
+                        DAILY & AWARDS
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => setIsPaused(false)}
-                      className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-wider text-xs sm:text-sm font-['Orbitron',sans-serif] shadow-[0_0_16px_rgba(61,235,224,0.35)] active:scale-95 transition-all cursor-pointer m-1"
+                      style={{
+                        margin: 0,
+                        backgroundColor: displayTheme.primaryBtnBg,
+                        color: displayTheme.primaryBtnText,
+                        boxShadow: `0 0 16px ${displayTheme.accentGlowRgba}`,
+                      }}
+                      className="btn-creatyxo w-full rounded-2xl font-black tracking-wider text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                     >
                       RESUME
                     </button>
@@ -1498,7 +2449,8 @@ export default function App() {
                         setIsPaused(false);
                         openLeaderboard('game');
                       }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border border-[#222f4b] hover:border-[#3debe0]/40 text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer m-1"
+                      style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                     >
                       LEADERBOARD
                     </button>
@@ -1506,10 +2458,13 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        setPreviewThemeId(null);
+                        setPreviewBlockSkinId(null);
                         setIsPaused(false);
                         setActiveScreen('home');
                       }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border border-[#222f4b] hover:border-[#3debe0]/40 text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer m-1"
+                      style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                     >
                       HOME SCREEN
                     </button>
@@ -1517,7 +2472,8 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => resetGame()}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border border-[#222f4b] hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer m-1"
+                      style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer"
                     >
                       RESTART
                     </button>
@@ -1535,7 +2491,7 @@ export default function App() {
                   </span>
                 ) : (
                   <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-3 leading-normal flex items-center justify-center">
-                    SESSION COMPLETED
+                    SESSION COMPLETED • {formatDuration(sessionElapsedSec)}
                   </span>
                 )}
 
@@ -1544,12 +2500,21 @@ export default function App() {
                 </h2>
 
                 {/* Score Summary Box */}
-                <div className="w-full max-w-[320px] bg-[#0c1220] border border-[#1d273f] rounded-2xl p-4 sm:p-6 shadow-xl mb-4">
+                <div
+                  style={{
+                    backgroundColor: displayTheme.surfaceBg,
+                    borderColor: displayTheme.surfaceBorder,
+                  }}
+                  className="w-full max-w-[320px] border rounded-2xl p-4 sm:p-6 shadow-xl mb-4"
+                >
                   <div className="flex flex-col items-center justify-center text-center">
                     <span className="text-[10px] font-bold text-slate-400 tracking-wider leading-normal">
                       FINAL SCORE
                     </span>
-                    <span className="text-3xl font-black text-[#3debe0] tracking-wide mt-2 font-['Orbitron',sans-serif] leading-tight tabular-nums">
+                    <span
+                      style={{ color: displayTheme.accentHex }}
+                      className="text-3xl font-black tracking-wide mt-2 font-['Orbitron',sans-serif] leading-tight tabular-nums"
+                    >
                       {score.toLocaleString()}
                     </span>
                   </div>
@@ -1579,12 +2544,18 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Action Buttons: 12px gap, at least 4px separation */}
+                {/* Action Buttons */}
                 <div className="flex flex-col gap-3 w-full max-w-[320px]">
                   <button
                     type="button"
                     onClick={() => resetGame()}
-                    className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] shadow-[0_0_20px_rgba(61,235,224,0.4)] active:scale-95 transition-all cursor-pointer m-1"
+                    style={{
+                      margin: 0,
+                      backgroundColor: displayTheme.primaryBtnBg,
+                      color: displayTheme.primaryBtnText,
+                      boxShadow: `0 0 20px ${displayTheme.accentGlowRgba}`,
+                    }}
+                    className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                   >
                     PLAY AGAIN
                   </button>
@@ -1595,7 +2566,8 @@ export default function App() {
                       setIsGameOver(false);
                       openLeaderboard('game');
                     }}
-                    className="btn-creatyxo w-full rounded-xl bg-[#121828] border border-[#1d273f] hover:border-[#3debe0]/40 text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer m-1"
+                    style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                    className="btn-creatyxo w-full rounded-xl bg-[#121828] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                   >
                     LEADERBOARD
                   </button>
@@ -1606,7 +2578,8 @@ export default function App() {
                       setIsGameOver(false);
                       setActiveScreen('home');
                     }}
-                    className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer m-1"
+                    style={{ margin: 0 }}
+                    className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                   >
                     MAIN MENU
                   </button>

@@ -5,16 +5,21 @@
 
 import React from 'react';
 import { PlayerProfile, getTierFromScore, getTierBadgeStyle } from '../game/leaderboard';
+import { DifficultyModeId } from '../game/types';
+import { DIFFICULTY_MODES, DIFFICULTY_ORDER, getDifficultyConfig } from '../game/shapes';
 
 interface HomeScreenProps {
   playerProfile: PlayerProfile;
   bestScore: number;
+  modeBestScore: number;
+  difficultyMode: DifficultyModeId;
   userRank: number;
   soundEnabled: boolean;
   musicEnabled: boolean;
   onToggleSound: () => void;
   onToggleMusic: () => void;
   onOpenAudioSettings: () => void;
+  onSelectDifficulty: (mode: DifficultyModeId) => void;
   onStartGame: () => void;
   onOpenLeaderboard: () => void;
   onOpenNameModal: () => void;
@@ -23,12 +28,15 @@ interface HomeScreenProps {
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   playerProfile,
   bestScore,
+  modeBestScore,
+  difficultyMode,
   userRank,
   soundEnabled,
   musicEnabled,
   onToggleSound,
   onToggleMusic,
   onOpenAudioSettings,
+  onSelectDifficulty,
   onStartGame,
   onOpenLeaderboard,
   onOpenNameModal,
@@ -36,6 +44,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const tier = getTierFromScore(bestScore);
   const tierStyle = getTierBadgeStyle(tier);
   const initial = (playerProfile.avatarLetter || playerProfile.username.charAt(0) || 'P').toUpperCase();
+  const activeModeConfig = getDifficultyConfig(difficultyMode);
 
   return (
     <div className="w-full h-full flex flex-col justify-between items-center text-center select-none animate-fadeIn">
@@ -93,9 +102,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </header>
 
       {/* Central Branding with balanced spatial margins */}
-      <div className="flex flex-col items-center gap-5 my-auto py-3">
+      <div className="w-full flex flex-col items-center gap-4 my-auto py-2">
         {/* Title */}
-        <div className="flex flex-col items-center gap-1.5">
+        <div className="flex flex-col items-center gap-1">
           <h1 className="text-4xl sm:text-5xl font-black text-[#3debe0] font-['Black_Ops_One',sans-serif] tracking-wider drop-shadow-[0_0_18px_rgba(61,235,224,0.38)] leading-tight text-center">
             CREATYXO
           </h1>
@@ -105,21 +114,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Clean Score Card with >=4px distance */}
-        <div className="w-full max-w-[320px] bg-[#0c1220] border border-[#1b263d] rounded-2xl px-5 py-3.5 flex items-center justify-between shadow-sm min-h-[66px]">
-          <div className="flex flex-col text-left justify-center gap-1">
-            <span className="text-[10px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
-              BEST SCORE
+        <div className="w-full max-w-[320px] sm:max-w-[340px] bg-[#0c1220] border border-[#1b263d] rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm min-h-[64px]">
+          <div className="flex flex-col text-left justify-center gap-0.5">
+            <span className="text-[9.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+              {activeModeConfig.boardSize}×{activeModeConfig.boardSize} BEST
             </span>
-            <span className="text-xl sm:text-2xl font-black text-[#f6c445] font-['Orbitron',sans-serif] mt-1 leading-normal">
-              {bestScore.toLocaleString()}
+            <span className="text-xl sm:text-2xl font-black text-[#f6c445] font-['Orbitron',sans-serif] mt-0.5 leading-normal tabular-nums">
+              {modeBestScore.toLocaleString()}
             </span>
           </div>
 
-          <div className="flex flex-col items-end justify-center gap-1">
-            <span className="text-[10px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
-              RANK
+          <div className="flex flex-col items-end justify-center gap-0.5">
+            <span className="text-[9.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+              GLOBAL RANK
             </span>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-0.5">
               <span className="text-sm font-black text-white font-['Orbitron',sans-serif] leading-normal">
                 #{userRank}
               </span>
@@ -129,6 +138,50 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 {tier}
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Difficulty & Board Size Selector */}
+        <div className="w-full max-w-[320px] sm:max-w-[340px] flex flex-col gap-1.5">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[9px] font-bold tracking-widest text-slate-400 font-['Orbitron',sans-serif] uppercase">
+              MODE & BOARD SIZE
+            </span>
+            <span className="text-[9px] font-bold tracking-wider text-[#3debe0] font-['Orbitron',sans-serif]">
+              {activeModeConfig.subtitle}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 w-full">
+            {DIFFICULTY_ORDER.map((modeId) => {
+              const cfg = DIFFICULTY_MODES[modeId];
+              const isSelected = difficultyMode === modeId;
+
+              return (
+                <button
+                  key={modeId}
+                  type="button"
+                  onClick={() => onSelectDifficulty(modeId)}
+                  style={{ margin: 0 }}
+                  className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer active:scale-95 ${
+                    isSelected
+                      ? 'bg-[#122638] border-[#3debe0] text-white shadow-[0_0_14px_rgba(61,235,224,0.25)]'
+                      : 'bg-[#0c1220] border-[#1b263d] text-slate-400 hover:border-[#2a3b5c] hover:text-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`text-xs font-black font-['Orbitron',sans-serif] leading-tight ${
+                      isSelected ? 'text-[#3debe0]' : 'text-slate-200'
+                    }`}
+                  >
+                    {cfg.boardSize}×{cfg.boardSize}
+                  </span>
+                  <span className="text-[8px] font-bold tracking-wider font-['Orbitron',sans-serif] mt-0.5 leading-none">
+                    {cfg.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

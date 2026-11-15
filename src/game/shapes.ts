@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BlockColor, GridState, PieceShape } from './types';
+import { BlockColor, DifficultyConfig, DifficultyModeId, GridState, PieceShape } from './types';
 
 // Visual themes for the glossy 3D blocks matching the screenshot
 export const COLOR_THEMES: Record<
@@ -299,38 +299,161 @@ export const HELPER_SHAPES: Omit<PieceShape, 'id'>[] = [
   },
 ];
 
-// Savior pieces when the board is cramped
+export const DIFFICULTY_MODES: Record<DifficultyModeId, DifficultyConfig> = {
+  easy: {
+    id: 'easy',
+    label: 'EASY',
+    boardSize: 10,
+    subtitle: 'Spacious 10×10 grid',
+    maxPieceDim: 5,
+    maxPieceCells: 9,
+    helperChance: 0.25,
+  },
+  classic: {
+    id: 'classic',
+    label: 'CLASSIC',
+    boardSize: 8,
+    subtitle: 'Standard 8×8 grid',
+    maxPieceDim: 5,
+    maxPieceCells: 9,
+    helperChance: 0.35,
+  },
+  hard: {
+    id: 'hard',
+    label: 'HARD',
+    boardSize: 6,
+    subtitle: 'Tactical 6×6 grid',
+    maxPieceDim: 4,
+    maxPieceCells: 5,
+    helperChance: 0.32,
+  },
+  extreme: {
+    id: 'extreme',
+    label: 'EXTREME',
+    boardSize: 4,
+    subtitle: 'Compact 4×4 blitz',
+    maxPieceDim: 3,
+    maxPieceCells: 4,
+    helperChance: 0.25,
+  },
+};
+
+export const DIFFICULTY_ORDER: DifficultyModeId[] = ['easy', 'classic', 'hard', 'extreme'];
+
+export function getDifficultyConfig(mode: DifficultyModeId): DifficultyConfig {
+  return DIFFICULTY_MODES[mode] || DIFFICULTY_MODES.classic;
+}
+
+// Savior pieces ordered smallest-first when the board is cramped
 export const SAVIOR_SHAPES: Omit<PieceShape, 'id'>[] = [
   { name: 'Dot Gold', color: 'gold', matrix: [[1]] },
   { name: 'Dot Cyan', color: 'cyan', matrix: [[1]] },
   { name: '2-Line', color: 'cyan', matrix: [[1, 1]] },
+  { name: 'Diagonal Step', color: 'cyan', matrix: [[1, 0], [0, 1]] },
   { name: 'Corner', color: 'green', matrix: [[1, 1], [1, 0]] },
   { name: 'Bridge', color: 'rose', matrix: [[1, 0, 1]] },
-  { name: 'Diagonal Step', color: 'cyan', matrix: [[1, 0], [0, 1]] },
   { name: '3-Line', color: 'rose', matrix: [[1, 1, 1]] },
   { name: 'Square 2x2', color: 'orange', matrix: [[1, 1], [1, 1]] },
 ];
 
-export function createEmptyGrid(): GridState {
-  return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => null));
+export function createEmptyGrid(boardSize = 8): GridState {
+  return Array.from({ length: boardSize }, () => Array.from({ length: boardSize }, () => null));
+}
+
+function countMatrixCells(matrix: number[][]): number {
+  let count = 0;
+  for (let r = 0; r < matrix.length; r++) {
+    for (let c = 0; c < matrix[r].length; c++) {
+      if (matrix[r][c] === 1) count++;
+    }
+  }
+  return count;
+}
+
+function isTemplateAllowed(
+  matrix: number[][],
+  boardSize: number,
+  config: DifficultyConfig
+): boolean {
+  const rows = matrix.length;
+  const cols = matrix[0].length;
+  const maxDim = Math.max(rows, cols);
+  const cells = countMatrixCells(matrix);
+
+  if (maxDim > Math.min(config.maxPieceDim, boardSize)) return false;
+  if (cells > config.maxPieceCells) return false;
+  return true;
+}
+
+function getAllowedPool(
+  templates: Omit<PieceShape, 'id'>[],
+  boardSize: number,
+  config: DifficultyConfig,
+  emptyRatio: number
+): Omit<PieceShape, 'id'>[] {
+  const allowed = templates.filter((t) => isTemplateAllowed(t.matrix, boardSize, config));
+  if (allowed.length === 0) return [SAVIOR_SHAPES[0]];
+
+  // When a small or tight board is getting crowded, favor more compact pieces
+  if (boardSize <= 6 && emptyRatio < 0.55) {
+    const compact = allowed.filter((t) => countMatrixCells(t.matrix) <= 3);
+    if (compact.length > 0 && Math.random() < 0.72) {
+      return compact;
+    }
+  }
+
+  return allowed;
+}
+
+function getEmptyCellRatio(grid: GridState): number {
+  const rows = grid.length;
+  const cols = grid[0]?.length || rows;
+  const total = rows * cols;
+  if (total === 0) return 1;
+
+  let empty = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (grid[r][c] === null) empty++;
+    }
+  }
+  return empty / total;
 }
 
 let pieceCounter = 0;
 
+function makePieceId(prefix = 'piece'): string {
+  pieceCounter++;
+  return `${prefix}-${Date.now()}-${pieceCounter}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 export function getRandomPiece(
   grid?: GridState,
   forceHelper = false,
-  mustFit = false
+  mustFit = false,
+  mode: DifficultyModeId = 'classic'
 ): PieceShape {
-  const useHelper = forceHelper || Math.random() < 0.35;
-  const pool = useHelper ? HELPER_SHAPES : STANDARD_SHAPES;
+  const config = getDifficultyConfig(mode);
+  const boardSize = grid ? grid.length : config.boardSize;
+  const emptyRatio = grid ? getEmptyCellRatio(grid) : 1;
+
+  const useHelper = forceHelper || Math.random() < config.helperChance;
+  const rawPool = useHelper ? HELPER_SHAPES : STANDARD_SHAPES;
+  const pool = getAllowedPool(rawPool, boardSize, config, emptyRatio);
+  const fullAllowedPool = getAllowedPool(
+    [...STANDARD_SHAPES, ...HELPER_SHAPES],
+    boardSize,
+    config,
+    emptyRatio
+  );
+
   let candidate: { name: string; color: BlockColor; matrix: number[][] } | null = null;
 
   if (mustFit && grid) {
-    // Try multiple random templates and random rotations until finding one that fits!
-    for (let attempt = 0; attempt < 35; attempt++) {
-      const template = pool[Math.floor(Math.random() * pool.length)];
-      // Apply completely random orientation (0, 90, 180, 270 deg, optional flip)
+    // Try multiple random templates and random rotations from mode-appropriate pool
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const searchPool = attempt < 24 ? pool : fullAllowedPool;
+      const template = searchPool[Math.floor(Math.random() * searchPool.length)];
       const orientedMatrix = getRandomOrientation(template.matrix);
       const testPiece: PieceShape = {
         name: template.name,
@@ -349,9 +472,12 @@ export function getRandomPiece(
       }
     }
 
-    // If still not found, check savior shapes with random orientations
+    // If still not found, check savior shapes (smallest first) with all rotations
     if (!candidate) {
-      for (const savior of SAVIOR_SHAPES) {
+      const allowedSaviors = SAVIOR_SHAPES.filter((s) =>
+        isTemplateAllowed(s.matrix, boardSize, config)
+      );
+      for (const savior of allowedSaviors) {
         for (let rot = 0; rot < 4; rot++) {
           const oriented = rotateMatrix(savior.matrix, rot);
           const testPiece: PieceShape = {
@@ -374,7 +500,7 @@ export function getRandomPiece(
     }
   }
 
-  // Fallback to organic random selection with random orientation
+  // Fallback to organic random selection from mode-allowed pool
   if (!candidate) {
     const template = pool[Math.floor(Math.random() * pool.length)];
     candidate = {
@@ -384,10 +510,9 @@ export function getRandomPiece(
     };
   }
 
-  pieceCounter++;
   return {
     ...candidate,
-    id: `piece-${Date.now()}-${pieceCounter}-${Math.random().toString(36).slice(2, 6)}`,
+    id: makePieceId('piece'),
   };
 }
 
@@ -397,6 +522,8 @@ export function canPlacePiece(
   targetR: number,
   targetC: number
 ): boolean {
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || gridRows;
   const rows = piece.matrix.length;
   const cols = piece.matrix[0].length;
 
@@ -406,8 +533,8 @@ export function canPlacePiece(
         const boardR = targetR + r;
         const boardC = targetC + c;
 
-        // Check bounds
-        if (boardR < 0 || boardR >= 8 || boardC < 0 || boardC >= 8) {
+        // Check bounds dynamically
+        if (boardR < 0 || boardR >= gridRows || boardC < 0 || boardC >= gridCols) {
           return false;
         }
 
@@ -423,11 +550,13 @@ export function canPlacePiece(
 }
 
 export function canPieceFitAnywhere(grid: GridState, piece: PieceShape): boolean {
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || gridRows;
   const rows = piece.matrix.length;
   const cols = piece.matrix[0].length;
 
-  for (let r = 0; r <= 8 - rows; r++) {
-    for (let c = 0; c <= 8 - cols; c++) {
+  for (let r = 0; r <= gridRows - rows; r++) {
+    for (let c = 0; c <= gridCols - cols; c++) {
       if (canPlacePiece(grid, piece, r, c)) {
         return true;
       }
@@ -441,11 +570,13 @@ export function findFirstValidPlacement(
   grid: GridState,
   piece: PieceShape
 ): { r: number; c: number } | null {
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || gridRows;
   const rows = piece.matrix.length;
   const cols = piece.matrix[0].length;
 
-  for (let r = 0; r <= 8 - rows; r++) {
-    for (let c = 0; c <= 8 - cols; c++) {
+  for (let r = 0; r <= gridRows - rows; r++) {
+    for (let c = 0; c <= gridCols - cols; c++) {
       if (canPlacePiece(grid, piece, r, c)) {
         return { r, c };
       }
@@ -459,7 +590,8 @@ export function placePieceOnGrid(
   grid: GridState,
   piece: PieceShape,
   targetR: number,
-  targetC: number
+  targetC: number,
+  clearCompletedLines = false
 ): GridState {
   const newGrid = grid.map((row) => [...row]);
   for (let r = 0; r < piece.matrix.length; r++) {
@@ -469,29 +601,60 @@ export function placePieceOnGrid(
       }
     }
   }
+
+  if (clearCompletedLines) {
+    const size = newGrid.length;
+    const fullRows: number[] = [];
+    const fullCols: number[] = [];
+    for (let r = 0; r < size; r++) {
+      if (newGrid[r].every((cell) => cell !== null)) fullRows.push(r);
+    }
+    for (let c = 0; c < size; c++) {
+      let full = true;
+      for (let r = 0; r < size; r++) {
+        if (newGrid[r][c] === null) {
+          full = false;
+          break;
+        }
+      }
+      if (full) fullCols.push(c);
+    }
+    fullRows.forEach((r) => {
+      for (let c = 0; c < size; c++) newGrid[r][c] = null;
+    });
+    fullCols.forEach((c) => {
+      for (let r = 0; r < size; r++) newGrid[r][c] = null;
+    });
+  }
+
   return newGrid;
 }
 
 /**
- * Spawns 3 randomized pieces.
- * CRITICAL GUARANTEE: Every block in the tray has a guaranteed place to be
- * WITHOUT having to clear a row!
- * All 3 pieces can be placed simultaneously onto disjoint cells of the current board.
+ * Spawns 3 randomized pieces tailored to the active difficulty & board size.
+ * CRITICAL GUARANTEE:
+ * 1) No piece is ever larger than the board or mode limits.
+ * 2) Tries to guarantee all 3 pieces can be placed simultaneously (or sequentially with line clears).
+ * 3) Every single piece spawned in the tray is guaranteed to fit on the current board!
  */
-export function getRandomPieces(count = 3, grid?: GridState): PieceShape[] {
-  if (!grid) {
-    return Array.from({ length: count }, (_, idx) => getRandomPiece(undefined, idx === 1));
-  }
+export function getRandomPieces(
+  count = 3,
+  grid?: GridState,
+  mode: DifficultyModeId = 'classic'
+): PieceShape[] {
+  const config = getDifficultyConfig(mode);
+  const workingGrid = grid || createEmptyGrid(config.boardSize);
+  const boardSize = workingGrid.length;
 
-  // Attempt to find a batch of 3 pieces that can ALL fit simultaneously on the board without clearing a line
-  for (let attempt = 0; attempt < 50; attempt++) {
+  // Pass 1: Find `count` pieces that all fit simultaneously onto disjoint cells without needing a clear
+  for (let attempt = 0; attempt < 45; attempt++) {
     const pieces: PieceShape[] = [];
-    let simGrid = grid.map((row) => [...row]);
+    let simGrid = workingGrid.map((row) => [...row]);
     let success = true;
 
     for (let i = 0; i < count; i++) {
-      const isHelperSlot = i === 1;
-      const piece = getRandomPiece(simGrid, isHelperSlot, true);
+      const isHelperSlot = i === 1 && Math.random() < config.helperChance + 0.25;
+      const piece = getRandomPiece(simGrid, isHelperSlot, true, mode);
       const placement = findFirstValidPlacement(simGrid, piece);
 
       if (!placement) {
@@ -499,8 +662,7 @@ export function getRandomPieces(count = 3, grid?: GridState): PieceShape[] {
         break;
       }
 
-      // Mark the cells as occupied on the simulated board (WITHOUT clearing rows)
-      simGrid = placePieceOnGrid(simGrid, piece, placement.r, placement.c);
+      simGrid = placePieceOnGrid(simGrid, piece, placement.r, placement.c, false);
       pieces.push(piece);
     }
 
@@ -509,25 +671,54 @@ export function getRandomPieces(count = 3, grid?: GridState): PieceShape[] {
     }
   }
 
-  // If the board is very crowded, guarantee placement by picking compact/savior pieces that all fit
+  // Pass 2: On compact boards (4x4 / 6x6), simulate sequential placement WITH line clears
+  for (let attempt = 0; attempt < 35; attempt++) {
+    const pieces: PieceShape[] = [];
+    let simGrid = workingGrid.map((row) => [...row]);
+    let success = true;
+
+    for (let i = 0; i < count; i++) {
+      const piece = getRandomPiece(simGrid, false, true, mode);
+      const placement = findFirstValidPlacement(simGrid, piece);
+
+      if (!placement) {
+        success = false;
+        break;
+      }
+
+      simGrid = placePieceOnGrid(simGrid, piece, placement.r, placement.c, true);
+      pieces.push(piece);
+    }
+
+    // Also verify every spawned piece can at least fit on the initial workingGrid
+    if (success && pieces.length === count && pieces.every((p) => canPieceFitAnywhere(workingGrid, p))) {
+      return pieces;
+    }
+  }
+
+  // Pass 3: Tight-board savior fallback — fill each slot with compact pieces that DEFINITELY fit on `workingGrid`
   const guaranteedPieces: PieceShape[] = [];
-  let simGrid = grid.map((row) => [...row]);
+  let simGrid = workingGrid.map((row) => [...row]);
+  const allowedSaviors = SAVIOR_SHAPES.filter((s) =>
+    isTemplateAllowed(s.matrix, boardSize, config)
+  );
 
   for (let i = 0; i < count; i++) {
     let placedPiece: PieceShape | null = null;
 
-    for (const savior of SAVIOR_SHAPES) {
+    // Try fitting onto simGrid first (with clears)
+    for (const savior of allowedSaviors) {
       for (let rot = 0; rot < 4; rot++) {
         const oriented = rotateMatrix(savior.matrix, rot);
         const testPiece: PieceShape = {
           name: savior.name,
           color: savior.color,
           matrix: oriented,
-          id: `savior-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          id: makePieceId('savior'),
         };
         const placement = findFirstValidPlacement(simGrid, testPiece);
-        if (placement) {
-          simGrid = placePieceOnGrid(simGrid, testPiece, placement.r, placement.c);
+        if (placement && canPieceFitAnywhere(workingGrid, testPiece)) {
+          simGrid = placePieceOnGrid(simGrid, testPiece, placement.r, placement.c, true);
           placedPiece = testPiece;
           break;
         }
@@ -535,11 +726,29 @@ export function getRandomPieces(count = 3, grid?: GridState): PieceShape[] {
       if (placedPiece) break;
     }
 
-    if (placedPiece) {
-      guaranteedPieces.push(placedPiece);
-    } else {
-      guaranteedPieces.push(getRandomPiece(grid, false, false));
+    // If simGrid couldn't fit another simultaneously, still guarantee it fits on the CURRENT workingGrid!
+    if (!placedPiece) {
+      for (const savior of allowedSaviors) {
+        for (let rot = 0; rot < 4; rot++) {
+          const oriented = rotateMatrix(savior.matrix, rot);
+          const testPiece: PieceShape = {
+            name: savior.name,
+            color: savior.color,
+            matrix: oriented,
+            id: makePieceId('savior'),
+          };
+          if (canPieceFitAnywhere(workingGrid, testPiece)) {
+            placedPiece = testPiece;
+            break;
+          }
+        }
+        if (placedPiece) break;
+      }
     }
+
+    guaranteedPieces.push(
+      placedPiece || getRandomPiece(workingGrid, false, true, mode)
+    );
   }
 
   return guaranteedPieces;

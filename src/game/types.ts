@@ -5,6 +5,18 @@
 
 export type BlockColor = 'orange' | 'cyan' | 'rose' | 'green' | 'purple' | 'gold' | 'blue';
 
+export type DifficultyModeId = 'easy' | 'classic' | 'hard' | 'extreme';
+
+export interface DifficultyConfig {
+  id: DifficultyModeId;
+  label: string;
+  boardSize: number;
+  subtitle: string;
+  maxPieceDim: number;
+  maxPieceCells: number;
+  helperChance: number;
+}
+
 export interface PieceShape {
   id: string;
   name: string;

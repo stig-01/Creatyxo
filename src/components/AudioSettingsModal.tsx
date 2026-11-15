@@ -10,10 +10,12 @@ interface AudioSettingsModalProps {
   isOpen: boolean;
   soundEnabled: boolean;
   musicEnabled: boolean;
+  hapticsEnabled: boolean;
   soundVolume: number; // 0.0 to 1.0
   musicVolume: number; // 0.0 to 1.0
   onToggleSound: () => void;
   onToggleMusic: () => void;
+  onToggleHaptics: () => void;
   onChangeSoundVolume: (volume: number) => void;
   onChangeMusicVolume: (volume: number) => void;
   onClose: () => void;
@@ -23,10 +25,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   isOpen,
   soundEnabled,
   musicEnabled,
+  hapticsEnabled,
   soundVolume,
   musicVolume,
   onToggleSound,
   onToggleMusic,
+  onToggleHaptics,
   onChangeSoundVolume,
   onChangeMusicVolume,
   onClose,
@@ -81,10 +85,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider">
-                AUDIO SETTINGS
+                AUDIO & HAPTICS
               </h2>
               <p className="text-[10px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide mt-1">
-                ADJUST MUSIC & SOUND LOUDNESS
+                MUSIC, SOUND & MOBILE VIBRATION
               </p>
             </div>
           </div>
@@ -187,6 +191,37 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               {soundPercent}%
             </span>
           </div>
+        </div>
+
+        {/* Haptic Feedback Toggle */}
+        <div className="bg-[#101726] border border-[#19243a] rounded-xl p-3.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[#3debe0] shrink-0">
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
+              </svg>
+            </span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-bold text-slate-200 font-['Orbitron',sans-serif] tracking-wide">
+                HAPTIC FEEDBACK
+              </span>
+              <span className="text-[9px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide mt-0.5">
+                MOBILE VIBRATION ON MOVES
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggleHaptics}
+            className={`btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer m-1 shrink-0 ${
+              hapticsEnabled
+                ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
+                : 'bg-[#181f2f] border-[#25324b] text-slate-500'
+            }`}
+          >
+            {hapticsEnabled ? 'ACTIVE' : 'OFF'}
+          </button>
         </div>
 
         {/* Preset Quick Buttons: 12px gap, 14px 24px padding, 52px min-height */}

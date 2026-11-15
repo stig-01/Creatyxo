@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   BlockColor,
+  DifficultyModeId,
   DraggingPieceState,
   GridState,
   PieceShape,
@@ -13,9 +14,12 @@ import {
 } from './game/types';
 import {
   COLOR_THEMES,
+  DIFFICULTY_MODES,
+  DIFFICULTY_ORDER,
   canPieceFitAnywhere,
   canPlacePiece,
   createEmptyGrid,
+  getDifficultyConfig,
   getRandomPieces,
 } from './game/shapes';
 import {
@@ -31,6 +35,11 @@ import {
   playSoundVolumePreview,
   unlockAudioContext,
 } from './game/audio';
+import {
+  triggerHaptic,
+  triggerClearHaptic,
+  setHapticsEnabled as syncHapticsEnabled,
+} from './game/haptics';
 import { HomeScreen } from './components/HomeScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { NameSetupModal } from './components/NameSetupModal';
@@ -97,11 +106,40 @@ export default function App() {
   const [clearingCols, setClearingCols] = useState<number[]>([]);
   const [isBoardShaking, setIsBoardShaking] = useState<boolean>(false);
 
-  // Game Board State (8x8)
-  const [grid, setGrid] = useState<GridState>(() => createEmptyGrid());
+  // Difficulty Mode & Board Size State
+  const [difficultyMode, setDifficultyMode] = useState<DifficultyModeId>(() => {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('creatyxo_difficulty_mode');
+      const saved = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
+      if (saved && saved in DIFFICULTY_MODES) return saved;
+    }
+    return 'classic';
+  });
+  const activeDifficulty = getDifficultyConfig(difficultyMode);
+  const boardSize = activeDifficulty.boardSize;
+
+  // Game Board State (Dynamic: 10x10, 8x8, 6x6, 4x4)
+  const [grid, setGrid] = useState<GridState>(() => {
+    const raw =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('creatyxo_difficulty_mode')
+        : null;
+    const savedMode = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
+    const mode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
+    return createEmptyGrid(getDifficultyConfig(mode).boardSize);
+  });
 
   // Piece Tray State (3 slots)
-  const [tray, setTray] = useState<(PieceShape | null)[]>(() => getRandomPieces(3, createEmptyGrid()));
+  const [tray, setTray] = useState<(PieceShape | null)[]>(() => {
+    const raw =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('creatyxo_difficulty_mode')
+        : null;
+    const savedMode = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
+    const mode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
+    const size = getDifficultyConfig(mode).boardSize;
+    return getRandomPieces(3, createEmptyGrid(size), mode);
+  });
 
   // Score & Stats
   const [score, setScore] = useState<number>(0);
@@ -112,6 +150,26 @@ export default function App() {
     }
     return 0;
   });
+  const [modeBestScores, setModeBestScores] = useState<Record<DifficultyModeId, number>>(() => {
+    const defaults: Record<DifficultyModeId, number> = {
+      easy: 0,
+      classic: 0,
+      hard: 0,
+      extreme: 0,
+    };
+    if (typeof window !== 'undefined') {
+      const legacyClassic = parseInt(localStorage.getItem('creatyxo_best_score') || '0', 10) || 0;
+      const legacyChill = parseInt(localStorage.getItem('creatyxo_best_score_chill') || '0', 10) || 0;
+      defaults.classic = legacyClassic;
+      defaults.easy = legacyChill;
+      DIFFICULTY_ORDER.forEach((m) => {
+        const val = parseInt(localStorage.getItem(`creatyxo_best_score_${m}`) || '0', 10) || 0;
+        defaults[m] = Math.max(defaults[m], val);
+      });
+    }
+    return defaults;
+  });
+  const modeBestScore = modeBestScores[difficultyMode] || 0;
   const [combo, setCombo] = useState<number>(0);
   const [totalLinesCleared, setTotalLinesCleared] = useState<number>(0);
   const [maxCombo, setMaxCombo] = useState<number>(0);
@@ -147,11 +205,19 @@ export default function App() {
     return 0.8;
   });
   const [isAudioSettingsOpen, setIsAudioSettingsOpen] = useState<boolean>(false);
+  const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('creatyxo_haptics_enabled');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
 
-  // Synchronize initial audio volume levels & unlock audio on first user gesture
+  // Synchronize initial audio volume levels, haptics & unlock audio on first user gesture
   useEffect(() => {
     setSoundVolume(soundVolume);
     setMusicVolume(musicVolume);
+    syncHapticsEnabled(hapticsEnabled);
 
     const handleFirstUserInteraction = () => {
       unlockAudioContext();
@@ -241,6 +307,8 @@ export default function App() {
   const trayRef = useRef<(PieceShape | null)[]>(tray);
   trayRef.current = tray;
 
+  const lastPreviewRef = useRef<PlacementCoordinate | null>(null);
+
   const savePlayerProfile = (profile: PlayerProfile) => {
     setPlayerProfile(profile);
     setIsNameModalOpen(false);
@@ -266,11 +334,37 @@ export default function App() {
     });
   }, []);
 
-  // Sync best score to localStorage and save to shared global leaderboard
+  // Toggle Mobile Haptic Feedback
+  const toggleHaptics = useCallback(() => {
+    setHapticsEnabled((prev) => {
+      const next = !prev;
+      syncHapticsEnabled(next);
+      if (next) {
+        triggerHaptic('pick', true);
+      }
+      try {
+        localStorage.setItem('creatyxo_haptics_enabled', next.toString());
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  // Sync per-mode best score and overall global best score
   useEffect(() => {
+    if (score > modeBestScore) {
+      setModeBestScores((prev) => ({ ...prev, [difficultyMode]: score }));
+      setIsNewRecord(true);
+      try {
+        localStorage.setItem(`creatyxo_best_score_${difficultyMode}`, score.toString());
+      } catch {
+        // Ignore
+      }
+    }
+
     if (score > bestScore) {
       setBestScore(score);
-      setIsNewRecord(true);
       try {
         localStorage.setItem('creatyxo_best_score', score.toString());
         savePlayerToLeaderboard(playerProfile, score).catch(() => {});
@@ -278,7 +372,7 @@ export default function App() {
         // Ignore
       }
     }
-  }, [score, bestScore, playerProfile]);
+  }, [score, bestScore, modeBestScore, difficultyMode, playerProfile]);
 
   // Initial sync: Ensure any existing best score is pushed to the global leaderboard
   useEffect(() => {
@@ -302,30 +396,59 @@ export default function App() {
       .catch(() => {});
   }, [playerProfile, bestScore]);
 
-  // Restart / Reset game
-  const resetGame = useCallback(() => {
-    const empty = createEmptyGrid();
-    setGrid(empty);
-    setTray(getRandomPieces(3, empty));
-    setScore(0);
-    setCombo(0);
-    setTotalLinesCleared(0);
-    setMaxCombo(0);
-    setIsNewRecord(false);
-    setIsGameOver(false);
-    setIsPaused(false);
-    setClearingCells(new Set());
-    setDragging(null);
-    setPreviewPlacement(null);
-  }, []);
+  // Restart / Reset game for active (or specified) difficulty mode
+  const resetGame = useCallback(
+    (targetMode?: DifficultyModeId) => {
+      triggerHaptic('tap', hapticsEnabled);
+      const modeToUse = targetMode || difficultyMode;
+      const cfg = getDifficultyConfig(modeToUse);
+      const empty = createEmptyGrid(cfg.boardSize);
+      setGrid(empty);
+      setTray(getRandomPieces(3, empty, modeToUse));
+      setScore(0);
+      setCombo(0);
+      setTotalLinesCleared(0);
+      setMaxCombo(0);
+      setIsNewRecord(false);
+      setIsGameOver(false);
+      setIsPaused(false);
+      setClearingCells(new Set());
+      setClearingRows([]);
+      setClearingCols([]);
+      setDragging(null);
+      setPreviewPlacement(null);
+      lastPreviewRef.current = null;
+    },
+    [hapticsEnabled, difficultyMode]
+  );
+
+  // Switch difficulty mode & board size cleanly
+  const handleSelectDifficulty = useCallback(
+    (newMode: DifficultyModeId) => {
+      if (newMode === difficultyMode) {
+        triggerHaptic('tap', hapticsEnabled);
+        return;
+      }
+      setDifficultyMode(newMode);
+      try {
+        localStorage.setItem('creatyxo_difficulty_mode', newMode);
+      } catch {
+        // Ignore
+      }
+      resetGame(newMode);
+    },
+    [difficultyMode, hapticsEnabled, resetGame]
+  );
 
   const openLeaderboard = (from: 'home' | 'game') => {
+    triggerHaptic('tap', hapticsEnabled);
     setPreviousScreen(from);
     setActiveScreen('ranking');
   };
 
   // Start game flow directly
   const handleStartGame = () => {
+    triggerHaptic('tap', hapticsEnabled);
     if (musicEnabled) {
       startBackgroundMusic(true);
     }
@@ -357,14 +480,14 @@ export default function App() {
     const rect = boardEl.getBoundingClientRect();
     const innerWidth = rect.width - 20; // 10px board padding
     const gapPx = 4;
-    const cellPx = (innerWidth - 7 * gapPx) / 8;
+    const cellPx = (innerWidth - (boardSize - 1) * gapPx) / boardSize;
     return {
       cellPx,
       gapPx,
       originLeft: rect.left + 10,
       originTop: rect.top + 10,
     };
-  }, []);
+  }, [boardSize]);
 
   // Compute placement coordinate based on pointer coordinates
   const calculateTargetPlacement = useCallback(
@@ -436,6 +559,15 @@ export default function App() {
       });
 
       const placement = calculateTargetPlacement(e.clientX, e.clientY, current.piece);
+      if (
+        placement &&
+        (!lastPreviewRef.current ||
+          lastPreviewRef.current.r !== placement.r ||
+          lastPreviewRef.current.c !== placement.c)
+      ) {
+        triggerHaptic('snap', hapticsEnabled);
+      }
+      lastPreviewRef.current = placement;
       setPreviewPlacement(placement);
     };
 
@@ -472,17 +604,19 @@ export default function App() {
         const nextTray = [...trayRef.current];
         nextTray[trayIndex] = null;
 
+        const currentBoardSize = newGrid.length;
+
         const rowsToClear: number[] = [];
-        for (let r = 0; r < 8; r++) {
+        for (let r = 0; r < currentBoardSize; r++) {
           if (newGrid[r].every((cell) => cell !== null)) {
             rowsToClear.push(r);
           }
         }
 
         const colsToClear: number[] = [];
-        for (let c = 0; c < 8; c++) {
+        for (let c = 0; c < currentBoardSize; c++) {
           let full = true;
-          for (let r = 0; r < 8; r++) {
+          for (let r = 0; r < currentBoardSize; r++) {
             if (newGrid[r][c] === null) {
               full = false;
               break;
@@ -499,10 +633,10 @@ export default function App() {
         if (linesCleared > 0) {
           const cellsMarked = new Set<string>();
           rowsToClear.forEach((r) => {
-            for (let c = 0; c < 8; c++) cellsMarked.add(`${r},${c}`);
+            for (let c = 0; c < currentBoardSize; c++) cellsMarked.add(`${r},${c}`);
           });
           colsToClear.forEach((c) => {
-            for (let r = 0; r < 8; r++) cellsMarked.add(`${r},${c}`);
+            for (let r = 0; r < currentBoardSize; r++) cellsMarked.add(`${r},${c}`);
           });
 
           setClearingCells(cellsMarked);
@@ -511,12 +645,12 @@ export default function App() {
           setIsBoardShaking(true);
 
           rowsToClear.forEach((r) => {
-            for (let c = 0; c < 8; c++) {
+            for (let c = 0; c < currentBoardSize; c++) {
               newGrid[r][c] = null;
             }
           });
           colsToClear.forEach((c) => {
-            for (let r = 0; r < 8; r++) {
+            for (let r = 0; r < currentBoardSize; r++) {
               newGrid[r][c] = null;
             }
           });
@@ -527,6 +661,7 @@ export default function App() {
           setTotalLinesCleared((prev) => prev + linesCleared);
 
           playClearSound(nextCombo, linesCleared, soundEnabled);
+          triggerClearHaptic(linesCleared, nextCombo, hapticsEnabled);
 
           // Rich Multiplier Calculations:
           // 1. Line Clear Multiplier: 1 line = 150 pts, 2 lines = 450 pts (2x), 3 lines = 900 pts (3.5x), 4+ lines = 1600 pts (5x)
@@ -583,13 +718,14 @@ export default function App() {
           setCombo(0);
           setScore((prev) => prev + basePoints);
           playPlaceSound(soundEnabled);
+          triggerHaptic('place', hapticsEnabled);
         }
 
-        // If tray is empty, spawn 3 new pieces
+        // If tray is empty, spawn 3 new mode-compatible pieces that fit on the board
         const remainingPieces = nextTray.filter((p): p is PieceShape => p !== null);
         let finalTray = nextTray;
         if (remainingPieces.length === 0) {
-          finalTray = getRandomPieces(3, newGrid);
+          finalTray = getRandomPieces(3, newGrid, difficultyMode);
         }
 
         setGrid(newGrid);
@@ -602,10 +738,12 @@ export default function App() {
         if (!hasValidMove) {
           setIsGameOver(true);
           playGameOverSound(soundEnabled);
+          setTimeout(() => triggerHaptic('gameOver', hapticsEnabled), 160);
           savePlayerToLeaderboard(playerProfile, Math.max(score, bestScore)).catch(() => {});
         }
       }
 
+      lastPreviewRef.current = null;
       setDragging(null);
       setPreviewPlacement(null);
     };
@@ -619,7 +757,7 @@ export default function App() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [calculateTargetPlacement, combo, soundEnabled]);
+  }, [calculateTargetPlacement, combo, soundEnabled, hapticsEnabled, difficultyMode]);
 
   // Pointer Down on Tray Piece
   const handlePointerDownPiece = (
@@ -631,6 +769,7 @@ export default function App() {
     if (isGameOver || isPaused) return;
 
     playPickSound(soundEnabled);
+    triggerHaptic('pick', hapticsEnabled);
 
     setDragging({
       piece,
@@ -641,6 +780,7 @@ export default function App() {
     });
 
     const placement = calculateTargetPlacement(e.clientX, e.clientY, piece);
+    lastPreviewRef.current = placement;
     setPreviewPlacement(placement);
   };
 
@@ -668,7 +808,8 @@ export default function App() {
     const cols = piece.matrix[0].length;
 
     let cellPx = 18;
-    if (rows > 3 || cols > 3) cellPx = 13;
+    if (rows >= 5 || cols >= 5) cellPx = 10;
+    else if (rows > 3 || cols > 3) cellPx = 13;
     else if (rows === 1 && cols === 1) cellPx = 24;
 
     return (
@@ -762,15 +903,17 @@ export default function App() {
         isInitialSetup={!playerProfile.hasChosenName}
       />
 
-      {/* Audio Settings & Volume Sliders Modal */}
+      {/* Audio Settings & Haptics Modal */}
       <AudioSettingsModal
         isOpen={isAudioSettingsOpen}
         soundEnabled={soundEnabled}
         musicEnabled={musicEnabled}
+        hapticsEnabled={hapticsEnabled}
         soundVolume={soundVolume}
         musicVolume={musicVolume}
         onToggleSound={toggleSound}
         onToggleMusic={toggleMusic}
+        onToggleHaptics={toggleHaptics}
         onChangeSoundVolume={handleSoundVolumeChange}
         onChangeMusicVolume={handleMusicVolumeChange}
         onClose={() => setIsAudioSettingsOpen(false)}
@@ -785,12 +928,15 @@ export default function App() {
           <HomeScreen
             playerProfile={playerProfile}
             bestScore={bestScore}
+            modeBestScore={modeBestScore}
+            difficultyMode={difficultyMode}
             userRank={userRank}
             soundEnabled={soundEnabled}
             musicEnabled={musicEnabled}
             onToggleSound={toggleSound}
             onToggleMusic={toggleMusic}
             onOpenAudioSettings={() => setIsAudioSettingsOpen(true)}
+            onSelectDifficulty={handleSelectDifficulty}
             onStartGame={handleStartGame}
             onOpenLeaderboard={() => openLeaderboard('home')}
             onOpenNameModal={() => setIsNameModalOpen(true)}
@@ -829,13 +975,18 @@ export default function App() {
                   </svg>
                 </button>
 
-                <h1
-                  className="text-xl sm:text-2xl tracking-wider text-[#3debe0] uppercase font-['Black_Ops_One',sans-serif] drop-shadow-[0_0_16px_rgba(61,235,224,0.35)] text-center px-2 select-none cursor-pointer flex items-center justify-center"
-                  onClick={() => setActiveScreen('home')}
-                  title="Main Menu"
-                >
-                  CREATYXO
-                </h1>
+                <div className="flex flex-col items-center justify-center">
+                  <h1
+                    className="text-xl sm:text-2xl tracking-wider text-[#3debe0] uppercase font-['Black_Ops_One',sans-serif] drop-shadow-[0_0_16px_rgba(61,235,224,0.35)] text-center px-2 select-none cursor-pointer flex items-center justify-center leading-none"
+                    onClick={() => setActiveScreen('home')}
+                    title="Main Menu"
+                  >
+                    CREATYXO
+                  </h1>
+                  <span className="text-[8.5px] font-bold tracking-[0.2em] text-slate-400 font-['Orbitron',sans-serif] mt-1">
+                    {boardSize}×{boardSize} • {activeDifficulty.label}
+                  </span>
+                </div>
 
                 {/* Settings Button (Top Right Corner: 10px margin from screen border, 4px from neighbors) */}
                 <button
@@ -903,7 +1054,7 @@ export default function App() {
                       style={{ paddingLeft: 8 }}
                       className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal"
                     >
-                      BEST
+                      BEST ({boardSize}×{boardSize})
                     </span>
                     <span className="text-[9.5px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-normal">
                       #{userRank}
@@ -913,7 +1064,7 @@ export default function App() {
                     style={{ paddingLeft: 5 }}
                     className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums"
                   >
-                    {bestScore.toLocaleString()}
+                    {modeBestScore.toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -940,7 +1091,13 @@ export default function App() {
                   }}
                   className={`relative select-none touch-none ${isBoardShaking ? 'animate-board-shake' : ''}`}
                 >
-                  <div className="grid grid-cols-8 grid-rows-8 gap-1 sm:gap-1.5 w-full h-full relative">
+                  <div
+                    className={`grid ${boardSize >= 10 ? 'gap-1' : 'gap-1 sm:gap-1.5'} w-full h-full relative`}
+                    style={{
+                      gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${boardSize}, minmax(0, 1fr))`,
+                    }}
+                  >
                     {grid.map((row, r) =>
                       row.map((cellColor, c) => {
                         const isPreview = isPreviewCell(r, c);
@@ -950,13 +1107,19 @@ export default function App() {
                           : cellColor;
 
                         const theme = activeColor ? COLOR_THEMES[activeColor] : null;
+                        const cellRadius =
+                          boardSize <= 4
+                            ? 'rounded-lg'
+                            : boardSize >= 10
+                            ? 'rounded-[4px]'
+                            : 'rounded-[5px] sm:rounded-md';
 
                         return (
                           <div
                             key={`${r}-${c}`}
                             data-r={r}
                             data-c={c}
-                            className={`w-full h-full rounded-[5px] sm:rounded-md flex items-center justify-center transition-all duration-100 ${
+                            className={`w-full h-full ${cellRadius} flex items-center justify-center transition-all duration-100 ${
                               isClearing
                                 ? 'animate-cell-blast z-20'
                                 : theme
@@ -975,9 +1138,10 @@ export default function App() {
                   {clearingRows.map((r) => (
                     <div
                       key={`laser-r-${r}`}
-                      className="absolute left-2.5 right-2.5 pointer-events-none z-30 animate-laser-row h-7 rounded-sm bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
+                      className="absolute left-2.5 right-2.5 pointer-events-none z-30 animate-laser-row rounded-sm bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
                       style={{
-                        top: `calc(${r * 12.5}% + 10px)`,
+                        top: `calc(10px + ${r} * (100% - 20px) / ${boardSize})`,
+                        height: `calc((100% - 20px) / ${boardSize})`,
                         transformOrigin: 'left center',
                       }}
                     />
@@ -987,9 +1151,10 @@ export default function App() {
                   {clearingCols.map((c) => (
                     <div
                       key={`laser-c-${c}`}
-                      className="absolute top-2.5 bottom-2.5 pointer-events-none z-30 animate-laser-col w-7 rounded-sm bg-gradient-to-b from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
+                      className="absolute top-2.5 bottom-2.5 pointer-events-none z-30 animate-laser-col rounded-sm bg-gradient-to-b from-transparent via-white to-transparent shadow-[0_0_28px_#3debe0]"
                       style={{
-                        left: `calc(${c * 12.5}% + 10px)`,
+                        left: `calc(10px + ${c} * (100% - 20px) / ${boardSize})`,
+                        width: `calc((100% - 20px) / ${boardSize})`,
                         transformOrigin: 'center top',
                       }}
                     />
@@ -1210,6 +1375,59 @@ export default function App() {
                         aria-label="Adjust sound effects loudness"
                       />
                     </div>
+
+                    {/* Haptic Feedback Toggle */}
+                    <div className="flex items-center justify-between pt-1 border-t border-[#182238]">
+                      <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-[#3debe0] fill-current" viewBox="0 0 24 24">
+                          <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
+                        </svg>
+                        HAPTICS
+                      </span>
+                      <button
+                        type="button"
+                        onClick={toggleHaptics}
+                        className={`min-h-[44px] px-5 py-2 rounded-xl border font-['Orbitron',sans-serif] cursor-pointer transition-colors text-xs font-bold flex items-center justify-center leading-normal box-border ${
+                          hapticsEnabled
+                            ? 'bg-[#17303d] border-[#3debe0]/60 text-[#3debe0]'
+                            : 'bg-[#181f2f] border-[#25324b] text-slate-500'
+                        }`}
+                      >
+                        {hapticsEnabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {/* Switch Difficulty / Board Size */}
+                    <div className="pt-2 border-t border-[#182238]">
+                      <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider block mb-1.5">
+                        BOARD SIZE & DIFFICULTY
+                      </span>
+                      <div className="grid grid-cols-4 gap-1.5 w-full">
+                        {DIFFICULTY_ORDER.map((modeId) => {
+                          const cfg = DIFFICULTY_MODES[modeId];
+                          const isSelected = difficultyMode === modeId;
+                          return (
+                            <button
+                              key={modeId}
+                              type="button"
+                              onClick={() => handleSelectDifficulty(modeId)}
+                              style={{ margin: 0 }}
+                              className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#17303d] border-[#3debe0] text-[#3debe0]'
+                                  : 'bg-[#141b2e] border-[#222f4b] text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <span className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight">
+                                {cfg.boardSize}×{cfg.boardSize}
+                              </span>
+                              <span className="text-[7px] font-bold tracking-wider font-['Orbitron',sans-serif] mt-0.5 leading-none">
+                                {cfg.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Navigation Actions: 12px gap, at least 4px separation */}
@@ -1246,7 +1464,7 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={resetGame}
+                      onClick={() => resetGame()}
                       className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border border-[#222f4b] hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer m-1"
                     >
                       RESTART
@@ -1291,7 +1509,7 @@ export default function App() {
                     <div className="flex flex-col items-center justify-center">
                       <span className="text-[9px] font-bold text-slate-400 leading-normal">BEST</span>
                       <span className="text-sm font-black text-[#f6c445] mt-1.5 leading-normal tabular-nums">
-                        {bestScore.toLocaleString()}
+                        {modeBestScore.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex flex-col items-center justify-center border-x border-[#192338]">
@@ -1313,7 +1531,7 @@ export default function App() {
                 <div className="flex flex-col gap-3 w-full max-w-[320px]">
                   <button
                     type="button"
-                    onClick={resetGame}
+                    onClick={() => resetGame()}
                     className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] shadow-[0_0_20px_rgba(61,235,224,0.4)] active:scale-95 transition-all cursor-pointer m-1"
                   >
                     PLAY AGAIN

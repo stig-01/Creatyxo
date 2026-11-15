@@ -177,20 +177,20 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
       </div>
 
       {/* 3. Search Bar */}
-      <div className="shrink-0 mb-2.5 relative">
+      <div style={{ marginLeft: 10, marginRight: 10, marginTop: 6, marginBottom: 10 }} className="shrink-0 relative">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search player name..."
-          style={{ paddingLeft: 0, paddingRight: 0, marginLeft: 10, marginRight: 0, marginTop: 6, marginBottom: 5 }}
-          className="h-11 w-full bg-[#101625] border border-[#1d273f] rounded-xl text-xs font-bold text-white font-['Orbitron',sans-serif] focus:outline-none focus:border-[#3debe0]/60 placeholder:text-slate-500 placeholder:font-normal"
+          className={`h-11 w-full box-border pl-3.5 ${searchQuery ? 'pr-20' : 'pr-3.5'} bg-[#101625] border border-[#1d273f] rounded-xl text-xs font-bold text-white font-['Orbitron',sans-serif] focus:outline-none focus:border-[#3debe0]/60 placeholder:text-slate-500 placeholder:font-normal`}
         />
         {searchQuery && (
           <button
             type="button"
             onClick={() => setSearchQuery('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-7 px-2.5 rounded-lg bg-[#141b2e] hover:bg-[#1a253f] border border-[#233250] text-slate-400 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer transition-colors leading-none m-1"
+            style={{ margin: 0 }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-7 px-2.5 rounded-lg bg-[#141b2e] hover:bg-[#1a253f] border border-[#233250] text-slate-400 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer transition-colors leading-none"
           >
             CLEAR
           </button>
@@ -299,11 +299,11 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
       </div>
 
       {/* 5. Fixed Bottom Footer: 10px clearance from screen border */}
-      <footer className="shrink-0 pt-3 pb-2.5 px-3 sm:px-4 border-t border-[#141d30] mt-auto mb-2.5">
+      <footer style={{ paddingLeft: 10, paddingRight: 10 }} className="shrink-0 pt-3 pb-2.5 border-t border-[#141d30] mt-auto mb-2.5">
         <button
           type="button"
           onClick={onPlayGame}
-          style={{ marginLeft: 10, marginRight: 10 }}
+          style={{ margin: 0 }}
           className="btn-creatyxo w-full rounded-2xl bg-[#3debe0] hover:bg-[#34d1c6] text-[#070a11] font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all shadow-[0_0_20px_rgba(61,235,224,0.35)] cursor-pointer"
         >
           PLAY NOW

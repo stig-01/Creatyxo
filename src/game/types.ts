@@ -31,6 +31,9 @@ export interface DraggingPieceState {
   trayIndex: number;
   pointerX: number;
   pointerY: number;
+  startX: number;
+  startY: number;
+  hasMoved: boolean;
   isTouch: boolean;
 }
 

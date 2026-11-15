@@ -489,50 +489,90 @@ export default function App() {
     };
   }, [boardSize]);
 
-  // Compute placement coordinate based on pointer coordinates
+  // Shared visual center & grid metrics so floating block and drop target align 1:1
+  const getFloatingPieceMetrics = useCallback(
+    (pointerX: number, pointerY: number, piece: PieceShape, isTouch: boolean) => {
+      const { cellPx, gapPx, originLeft, originTop } = getBoardCellMetrics();
+      const effectiveGap = Math.max(4, gapPx);
+      const stride = cellPx + effectiveGap;
+      const rows = piece.matrix.length;
+      const cols = piece.matrix[0].length;
+      const pieceW = cols * cellPx + (cols - 1) * effectiveGap;
+      const pieceH = rows * cellPx + (rows - 1) * effectiveGap;
+      const halfW = pieceW / 2;
+      const halfH = pieceH / 2;
+      const touchOffset = isTouch ? 75 : 0;
+      const targetY = pointerY - touchOffset;
+
+      const centerX = Math.max(10 + halfW, Math.min(window.innerWidth - 10 - halfW, pointerX));
+      const centerY = Math.max(10 + halfH, Math.min(window.innerHeight - 10 - halfH, targetY));
+
+      return {
+        centerX,
+        centerY,
+        cellPx,
+        effectiveGap,
+        stride,
+        originLeft,
+        originTop,
+      };
+    },
+    [getBoardCellMetrics]
+  );
+
+  // Compute placement coordinate based on exact visual piece center
   const calculateTargetPlacement = useCallback(
-    (pointerX: number, pointerY: number, piece: PieceShape): PlacementCoordinate | null => {
+    (
+      pointerX: number,
+      pointerY: number,
+      piece: PieceShape,
+      isTouch: boolean
+    ): PlacementCoordinate | null => {
       const boardEl = boardRef.current;
       if (!boardEl) return null;
 
-      const { cellPx, gapPx, originLeft, originTop } = getBoardCellMetrics();
-      const stride = cellPx + gapPx;
-
-      const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const effectiveY = isMobile ? pointerY - 75 : pointerY;
-
+      const currentGrid = gridRef.current;
+      const gridRows = currentGrid.length;
+      const gridCols = currentGrid[0]?.length || gridRows;
       const pieceRows = piece.matrix.length;
       const pieceCols = piece.matrix[0].length;
 
-      const visualAnchorR = (pieceRows - 1) / 2;
-      const visualAnchorC = (pieceCols - 1) / 2;
+      const { centerX, centerY, cellPx, stride, originLeft, originTop } =
+        getFloatingPieceMetrics(pointerX, pointerY, piece, isTouch);
 
-      const relativeX = pointerX - originLeft;
-      const relativeY = effectiveY - originTop;
+      // Map piece top-left block center directly to grid (r, c) coordinates
+      const floatTargetC = (centerX - originLeft - cellPx / 2) / stride - (pieceCols - 1) / 2;
+      const floatTargetR = (centerY - originTop - cellPx / 2) / stride - (pieceRows - 1) / 2;
 
-      const floatCol = relativeX / stride;
-      const floatRow = relativeY / stride;
+      // Reject clearly off-board positions so pieces never auto-attach from the tray or outside
+      if (
+        floatTargetR < -0.45 ||
+        floatTargetR > gridRows - pieceRows + 0.45 ||
+        floatTargetC < -0.45 ||
+        floatTargetC > gridCols - pieceCols + 0.45
+      ) {
+        return null;
+      }
 
-      const targetR = Math.round(floatRow - visualAnchorR);
-      const targetC = Math.round(floatCol - visualAnchorC);
+      const targetR = Math.round(floatTargetR);
+      const targetC = Math.round(floatTargetC);
 
-      if (canPlacePiece(gridRef.current, piece, targetR, targetC)) {
+      if (canPlacePiece(currentGrid, piece, targetR, targetC)) {
         return { r: targetR, c: targetC };
       }
 
-      // Proximity snap
+      // Tight seam-forgiveness snap only when straddling the boundary of an adjacent open spot
       let bestPlacement: PlacementCoordinate | null = null;
       let minDistance = Infinity;
 
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
           const testR = targetR + dr;
           const testC = targetC + dc;
-          if (canPlacePiece(gridRef.current, piece, testR, testC)) {
-            const centerR = testR + visualAnchorR;
-            const centerC = testC + visualAnchorC;
-            const distSq = (centerR - floatRow) ** 2 + (centerC - floatCol) ** 2;
-            if (distSq < minDistance && distSq < 1.7) {
+          if (canPlacePiece(currentGrid, piece, testR, testC)) {
+            const distSq = (testR - floatTargetR) ** 2 + (testC - floatTargetC) ** 2;
+            if (distSq < minDistance && distSq < 0.42) {
               minDistance = distSq;
               bestPlacement = { r: testR, c: testC };
             }
@@ -542,7 +582,7 @@ export default function App() {
 
       return bestPlacement;
     },
-    [getBoardCellMetrics]
+    [getFloatingPieceMetrics]
   );
 
   // Global Pointer Listeners for Smooth Drag and Drop
@@ -552,13 +592,20 @@ export default function App() {
       e.preventDefault();
 
       const current = draggingRef.current;
+      const moved =
+        current.hasMoved ||
+        Math.hypot(e.clientX - current.startX, e.clientY - current.startY) >= 8;
+
       setDragging({
         ...current,
         pointerX: e.clientX,
         pointerY: e.clientY,
+        hasMoved: moved,
       });
 
-      const placement = calculateTargetPlacement(e.clientX, e.clientY, current.piece);
+      const placement = moved
+        ? calculateTargetPlacement(e.clientX, e.clientY, current.piece, current.isTouch)
+        : null;
       if (
         placement &&
         (!lastPreviewRef.current ||
@@ -576,11 +623,14 @@ export default function App() {
       if (!currentDragging) return;
 
       const boardEl = boardRef.current;
-      const placement = calculateTargetPlacement(
-        currentDragging.pointerX,
-        currentDragging.pointerY,
-        currentDragging.piece
-      );
+      const placement = currentDragging.hasMoved
+        ? calculateTargetPlacement(
+            currentDragging.pointerX,
+            currentDragging.pointerY,
+            currentDragging.piece,
+            currentDragging.isTouch
+          )
+        : null;
 
       if (boardEl && placement) {
         const { piece, trayIndex } = currentDragging;
@@ -776,12 +826,14 @@ export default function App() {
       trayIndex,
       pointerX: e.clientX,
       pointerY: e.clientY,
+      startX: e.clientX,
+      startY: e.clientY,
+      hasMoved: false,
       isTouch: e.pointerType === 'touch',
     });
 
-    const placement = calculateTargetPlacement(e.clientX, e.clientY, piece);
-    lastPreviewRef.current = placement;
-    setPreviewPlacement(placement);
+    lastPreviewRef.current = null;
+    setPreviewPlacement(null);
   };
 
   // Check if a cell is part of preview placement
@@ -845,25 +897,25 @@ export default function App() {
     const rows = piece.matrix.length;
     const cols = piece.matrix[0].length;
 
-    const { cellPx, gapPx } = getBoardCellMetrics();
-    const effectiveGap = Math.max(4, gapPx);
-    const pieceW = cols * cellPx + (cols - 1) * effectiveGap;
-    const pieceH = rows * cellPx + (rows - 1) * effectiveGap;
-    const halfW = pieceW / 2;
-    const halfH = pieceH / 2;
-    const touchOffset = isTouch ? 75 : 0;
-    const targetY = pointerY - touchOffset;
-
-    // Guarantee dragging block is at least 10px away from the screen border
-    const clampedX = Math.max(10 + halfW, Math.min(window.innerWidth - 10 - halfW, pointerX));
-    const clampedY = Math.max(10 + halfH, Math.min(window.innerHeight - 10 - halfH, targetY));
+    const { centerX, centerY, cellPx, effectiveGap } = getFloatingPieceMetrics(
+      pointerX,
+      pointerY,
+      piece,
+      isTouch
+    );
+    const cellRadius =
+      boardSize <= 4
+        ? 'rounded-lg'
+        : boardSize >= 10
+        ? 'rounded-[4px]'
+        : 'rounded-[5px] sm:rounded-md';
 
     return (
       <div
         className="fixed pointer-events-none z-50 select-none -translate-x-1/2 -translate-y-1/2"
         style={{
-          left: `${clampedX}px`,
-          top: `${clampedY}px`,
+          left: `${centerX}px`,
+          top: `${centerY}px`,
         }}
       >
         <div
@@ -878,7 +930,7 @@ export default function App() {
             row.map((cell, c) => (
               <div
                 key={`drag-${r}-${c}`}
-                className={`rounded-[5px] sm:rounded-md transition-all ${
+                className={`${cellRadius} transition-all ${
                   cell === 1
                     ? `${theme.solid} ${theme.shadow} border ${theme.border}`
                     : 'bg-transparent'

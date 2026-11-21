@@ -27,6 +27,7 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   collection,
   query,
   orderBy,
@@ -106,10 +107,22 @@ if (config && config.apiKey && config.projectId) {
   }
 }
 
+let lastFirestoreErrorMessage: string | null = null;
+
+export function getLastFirestoreError(): string | null {
+  return lastFirestoreErrorMessage;
+}
+
+export function clearLastFirestoreError(): void {
+  lastFirestoreErrorMessage = null;
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const user = auth?.currentUser ?? null;
+  const message = error instanceof Error ? error.message : String(error);
+  lastFirestoreErrorMessage = message;
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
     authInfo: {
       userId: user?.uid ?? null,
       email: user?.email ?? null,
@@ -127,7 +140,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.warn('Firestore notice:', JSON.stringify(errInfo));
+  console.error('Firestore Error:', JSON.stringify(errInfo));
 }
 
 export function isFirestoreOnline(): boolean {
@@ -529,7 +542,7 @@ function mapDocToRecord(docId: string, data: Record<string, unknown>): Firestore
         ? data.avatarUrl
         : undefined,
     tier: (data.tier as FirestoreLeaderboardRecord['tier']) || computeTierFromScore(data.score),
-    updatedAt: toEpochMs(data.updatedAt),
+    updatedAt: toEpochMs(data.updatedAt) || Date.now(),
     xp: typeof data.xp === 'number' ? data.xp : undefined,
     level: typeof data.level === 'number' ? data.level : undefined,
     totalPlaytimeSec: typeof data.totalPlaytimeSec === 'number' ? data.totalPlaytimeSec : undefined,
@@ -555,85 +568,175 @@ function mapDocToRecord(docId: string, data: Record<string, unknown>): Firestore
   };
 }
 
+export async function fetchLeaderboardRecordFromFirestore(
+  playerId: string
+): Promise<FirestoreLeaderboardRecord | null> {
+  if (!db || !playerId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'leaderboard', playerId));
+    isDbOnline = true;
+    if (!snap.exists()) return null;
+    return mapDocToRecord(snap.id, snap.data() as Record<string, unknown>);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, `leaderboard/${playerId}`);
+    return null;
+  }
+}
+
+function mergeTwoRecordLists(
+  primary: FirestoreLeaderboardRecord[],
+  secondary: FirestoreLeaderboardRecord[]
+): FirestoreLeaderboardRecord[] {
+  const byId = new Map<string, FirestoreLeaderboardRecord>();
+  primary.forEach((r) => byId.set(r.id, r));
+  secondary.forEach((r) => {
+    const prev = byId.get(r.id);
+    if (!prev || r.updatedAt >= prev.updatedAt || Boolean(r.modeBestScores && !prev.modeBestScores)) {
+      byId.set(r.id, r);
+    }
+  });
+  return Array.from(byId.values()).sort((a, b) => b.score - a.score);
+}
+
 /**
- * Fetches the top shared records from Firestore (bounded query <= 100), optionally ordered by a specific grid mode
+ * Fetches the top shared records from Firestore (bounded query <= 100).
+ * Always queries by top-level `score` so legacy and new accounts are included,
+ * and when a grid mode is specified, merges in top `modeBestScores.<mode>` specialists.
  */
 export async function getLeaderboardRecordsFromFirestore(
-  limitCount = 50,
-  mode?: DifficultyModeId
+  limitCount = 100,
+  mode?: DifficultyModeId,
+  fromServer = false
 ): Promise<FirestoreLeaderboardRecord[]> {
   if (!db) return [];
   const boundedLimit = Math.min(100, Math.max(1, Math.floor(limitCount)));
-  const orderField = mode ? `modeBestScores.${mode}` : 'score';
+  const readQuery = async (q: ReturnType<typeof query>) => {
+    if (fromServer) {
+      try {
+        return await getDocsFromServer(q);
+      } catch {
+        return await getDocs(q);
+      }
+    }
+    return await getDocs(q);
+  };
+
   try {
-    const q = query(
+    const primaryQuery = query(
       collection(db, 'leaderboard'),
-      orderBy(orderField, 'desc'),
+      orderBy('score', 'desc'),
       limit(boundedLimit)
     );
-    const snap = await getDocs(q);
+    const primaryPromise = readQuery(primaryQuery);
+
+    const modePromise = mode
+      ? readQuery(
+          query(
+            collection(db, 'leaderboard'),
+            orderBy(`modeBestScores.${mode}`, 'desc'),
+            limit(boundedLimit)
+          )
+        ).catch(() => null)
+      : Promise.resolve(null);
+
+    const [primarySnap, modeSnap] = await Promise.all([primaryPromise, modePromise]);
     isDbOnline = true;
-    const records: FirestoreLeaderboardRecord[] = [];
-    snap.forEach((docItem) => {
+    clearLastFirestoreError();
+
+    const primaryRecords: FirestoreLeaderboardRecord[] = [];
+    primarySnap.forEach((docItem) => {
       const mapped = mapDocToRecord(docItem.id, docItem.data() as Record<string, unknown>);
-      if (mapped) records.push(mapped);
+      if (mapped) primaryRecords.push(mapped);
     });
-    return records;
-  } catch (err) {
-    if (mode && err instanceof Error && err.message.toLowerCase().includes('index')) {
-      return getLeaderboardRecordsFromFirestore(limitCount);
+
+    const modeRecords: FirestoreLeaderboardRecord[] = [];
+    if (modeSnap) {
+      modeSnap.forEach((docItem) => {
+        const mapped = mapDocToRecord(docItem.id, docItem.data() as Record<string, unknown>);
+        if (mapped) modeRecords.push(mapped);
+      });
     }
+
+    return mergeTwoRecordLists(primaryRecords, modeRecords);
+  } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'leaderboard');
     return [];
   }
 }
 
 /**
- * Subscribes to live leaderboard updates without triggering redundant follow-up getDocs
+ * Subscribes to live leaderboard updates across both legacy & per-grid records.
  */
 export function subscribeToLeaderboardUpdates(
   onUpdate: (records: FirestoreLeaderboardRecord[]) => void,
-  limitCount = 50,
+  limitCount = 100,
   mode?: DifficultyModeId
 ): Unsubscribe {
   if (!db) return () => {};
   const boundedLimit = Math.min(100, Math.max(1, Math.floor(limitCount)));
-  const orderField = mode ? `modeBestScores.${mode}` : 'score';
-  let activeUnsub: Unsubscribe = () => {};
-  let fallbackTriggered = false;
 
-  const attach = (field: string) => {
-    const q = query(
-      collection(db!, 'leaderboard'),
-      orderBy(field, 'desc'),
-      limit(boundedLimit)
-    );
-    activeUnsub = onSnapshot(
-      q,
-      (snap) => {
-        isDbOnline = true;
-        const records: FirestoreLeaderboardRecord[] = [];
-        snap.forEach((docItem) => {
-          const mapped = mapDocToRecord(docItem.id, docItem.data() as Record<string, unknown>);
-          if (mapped) records.push(mapped);
-        });
-        onUpdate(records);
-      },
-      (error) => {
-        if (field !== 'score' && !fallbackTriggered && error.message.toLowerCase().includes('index')) {
-          fallbackTriggered = true;
-          attach('score');
-          return;
-        }
-        handleFirestoreError(error, OperationType.LIST, 'leaderboard');
-      }
-    );
+  let primaryRecords: FirestoreLeaderboardRecord[] = [];
+  let modeRecords: FirestoreLeaderboardRecord[] = [];
+  const unsubs: Unsubscribe[] = [];
+
+  const emitMerged = () => {
+    onUpdate(mergeTwoRecordLists(primaryRecords, modeRecords));
   };
 
   try {
-    attach(orderField);
+    const primaryQ = query(
+      collection(db, 'leaderboard'),
+      orderBy('score', 'desc'),
+      limit(boundedLimit)
+    );
+    unsubs.push(
+      onSnapshot(
+        primaryQ,
+        (snap) => {
+          isDbOnline = true;
+          clearLastFirestoreError();
+          const next: FirestoreLeaderboardRecord[] = [];
+          snap.forEach((docItem) => {
+            const mapped = mapDocToRecord(docItem.id, docItem.data() as Record<string, unknown>);
+            if (mapped) next.push(mapped);
+          });
+          primaryRecords = next;
+          emitMerged();
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'leaderboard');
+        }
+      )
+    );
+
+    if (mode) {
+      const modeQ = query(
+        collection(db, 'leaderboard'),
+        orderBy(`modeBestScores.${mode}`, 'desc'),
+        limit(boundedLimit)
+      );
+      unsubs.push(
+        onSnapshot(
+          modeQ,
+          (snap) => {
+            isDbOnline = true;
+            const next: FirestoreLeaderboardRecord[] = [];
+            snap.forEach((docItem) => {
+              const mapped = mapDocToRecord(docItem.id, docItem.data() as Record<string, unknown>);
+              if (mapped) next.push(mapped);
+            });
+            modeRecords = next;
+            emitMerged();
+          },
+          () => {
+            // Mode-specific field index or sparse field fallback is handled by primary listener
+          }
+        )
+      );
+    }
+
     return () => {
-      activeUnsub();
+      unsubs.forEach((u) => u());
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'leaderboard');

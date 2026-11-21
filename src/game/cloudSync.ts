@@ -28,6 +28,7 @@ import {
 import {
   UserAccountRecord,
   fetchUserAccountFromFirestore,
+  fetchLeaderboardRecordFromFirestore,
   saveUserAccountToFirestore,
   savePlayerRecordToFirestore,
 } from './firebase';
@@ -365,9 +366,61 @@ export async function syncAccountWithCloud(
   }
 
   const cloud = await fetchUserAccountFromFirestore(uid);
-  const merged = cloud
+  const existingLb = !cloud ? await fetchLeaderboardRecordFromFirestore(uid) : null;
+  let merged = cloud
     ? mergeAccountSnapshots(localSnapshot, cloud)
     : { ...localSnapshot, accountKey: uid };
+
+  if (existingLb) {
+    const recoveredModes: Record<DifficultyModeId, number> = {
+      easy: Math.max(merged.modeBestScores.easy || 0, existingLb.modeBestScores?.easy ?? 0),
+      classic: Math.max(
+        merged.modeBestScores.classic || 0,
+        existingLb.modeBestScores?.classic ?? (existingLb.modeBestScores ? 0 : existingLb.score || 0)
+      ),
+      hard: Math.max(merged.modeBestScores.hard || 0, existingLb.modeBestScores?.hard ?? 0),
+      extreme: Math.max(merged.modeBestScores.extreme || 0, existingLb.modeBestScores?.extreme ?? 0),
+    };
+    const recoveredBest = Math.max(merged.bestScore, existingLb.score || 0, ...Object.values(recoveredModes));
+    const recoveredLines = Math.max(merged.stats.totalLinesCleared, existingLb.totalLinesCleared ?? 0);
+    const recoveredPlaytime = Math.max(merged.stats.totalPlaytimeSec, existingLb.totalPlaytimeSec ?? 0);
+    merged = {
+      ...merged,
+      bestScore: recoveredBest,
+      modeBestScores: recoveredModes,
+      stats: {
+        ...merged.stats,
+        xp: Math.max(merged.stats.xp, existingLb.xp ?? 0),
+        gamesPlayed: Math.max(merged.stats.gamesPlayed, existingLb.gamesPlayed ?? 0),
+        totalLinesCleared: recoveredLines,
+        totalPlaytimeSec: recoveredPlaytime,
+        longestSessionSec: Math.min(
+          recoveredPlaytime,
+          Math.max(merged.stats.longestSessionSec, existingLb.longestSessionSec ?? 0)
+        ),
+        bestCombo: Math.min(
+          recoveredLines,
+          Math.max(merged.stats.bestCombo, existingLb.bestCombo ?? 0)
+        ),
+        dailyStreak: Math.max(merged.stats.dailyStreak, existingLb.dailyStreak ?? 1),
+      },
+    };
+  }
+
+  if (
+    merged.bestScore > 0 &&
+    merged.stats.gamesPlayed === 0 &&
+    merged.stats.totalLinesCleared === 0 &&
+    merged.stats.totalPlaytimeSec < 5
+  ) {
+    merged = {
+      ...merged,
+      stats: {
+        ...merged.stats,
+        gamesPlayed: 1,
+      },
+    };
+  }
 
   saveLocalAccountSnapshot(merged);
 

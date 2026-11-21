@@ -245,10 +245,6 @@ service cloud.firestore {
             && incoming().modeBestScores.hard >= existing().modeBestScores.hard
             && incoming().modeBestScores.extreme >= existing().modeBestScores.extreme
           )
-        )
-        && (
-          !(existing().updatedAt is timestamp)
-          || (incoming().totalPlaytimeSec - existing().totalPlaytimeSec) <= ((request.time.toMillis() - existing().updatedAt.toMillis()) / 1000) + 120
         );
 
       allow delete: if false;

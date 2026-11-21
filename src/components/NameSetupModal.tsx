@@ -180,10 +180,12 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
             {isInitialSetup ? 'WELCOME TO CREATYXO' : 'EDIT NAME'}
           </h2>
 
-          <p className="text-xs text-slate-400 font-['Orbitron',sans-serif] max-w-[260px] leading-relaxed">
-            {isInitialSetup
-              ? 'Choose your player name & optional photo. Rolling a random name adds a tag.'
-              : 'Enter a custom name without numbers, or roll a random name.'}
+          <p className="text-xs text-slate-400 font-['Orbitron',sans-serif] max-w-[270px] leading-relaxed">
+            {isSignedIn
+              ? 'Update your global player name & optional photo.'
+              : isInitialSetup
+              ? 'Choose a local player name & photo, or sign in with Google to appear on the global leaderboard.'
+              : 'Guest names stay on this device. Sign in with Google to publish your profile globally.'}
           </p>
         </div>
 
@@ -249,19 +251,24 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
         </button>
 
         {!isSignedIn && onSignInGoogle && (
-          <button
-            type="button"
-            onClick={onSignInGoogle}
-            style={{
-              margin: 0,
-              borderColor: activeTheme.accentHex,
-              color: activeTheme.accentHex,
-              backgroundColor: '#111a2c',
-            }}
-            className="btn-creatyxo w-full rounded-xl border text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer hover:brightness-110 active:scale-95"
-          >
-            SIGN IN / RESTORE WITH GOOGLE
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={onSignInGoogle}
+              style={{
+                margin: 0,
+                borderColor: activeTheme.accentHex,
+                color: activeTheme.accentHex,
+                backgroundColor: '#111a2c',
+              }}
+              className="btn-creatyxo w-full rounded-xl border text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer hover:brightness-110 active:scale-95"
+            >
+              SIGN IN / RESTORE WITH GOOGLE
+            </button>
+            <span className="text-[9.5px] text-amber-300/90 font-['Orbitron',sans-serif] leading-snug">
+              Google Sign-In is required to publish new accounts & scores to the global leaderboard.
+            </span>
+          </div>
         )}
 
         {/* Action Buttons */}

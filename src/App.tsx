@@ -67,6 +67,7 @@ import {
 import {
   FirestoreLeaderboardRecord,
   getCurrentAuthUser,
+  getLastFirestoreError,
   subscribeToAuthChanges,
   signInWithGoogle,
   signOutPlayer,
@@ -635,6 +636,8 @@ export default function App() {
         applyAccountSnapshot(merged);
         if (!synced) {
           setHasPendingSync(true);
+        } else {
+          setHasPendingSync(false);
         }
       } finally {
         setIsSyncingCloud(false);
@@ -1065,9 +1068,17 @@ export default function App() {
         '#34d399'
       );
     } catch (err) {
+      const code = (err as { code?: string } | null)?.code || '';
       const message = err instanceof Error ? err.message : 'Google Sign-In could not complete.';
-      if (!message.includes('popup-closed-by-user')) {
-        pushToast('SIGN-IN NOTICE', 'Please allow the Google sign-in popup and try again.', '#fbbf24');
+      if (code === 'auth/popup-closed-by-user' || message.includes('popup-closed-by-user')) {
+        return;
+      }
+      if (code === 'auth/popup-blocked') {
+        pushToast('POPUP BLOCKED', 'Allow popups for this site and tap Sign In again.', '#fbbf24');
+      } else if (code === 'auth/unauthorized-domain') {
+        pushToast('DOMAIN NOT AUTHORIZED', 'Add this app domain in Firebase Auth settings.', '#fb7185');
+      } else {
+        pushToast('SIGN-IN NOTICE', 'Could not complete Google Sign-In. Please try again.', '#fbbf24');
       }
     }
   }, [hapticsEnabled, pushToast]);
@@ -1156,12 +1167,22 @@ export default function App() {
   const activeLeaderboardFetchMode = activeScreen === 'ranking' ? leaderboardMode : undefined;
 
   const refreshLeaderboardFromFirestore = useCallback(async () => {
-    const records = await fetchSharedLeaderboardRecords(true, 50, activeLeaderboardFetchMode);
+    if (authUserRef.current?.uid && hasPendingSyncRef.current) {
+      await persistSnapshotAndSync(undefined, true).catch(() => {});
+      if (hasPendingSyncRef.current && getLastFirestoreError()) {
+        pushToast(
+          'SYNC DELAYED',
+          'Your score is saved locally and will retry automatically.',
+          '#fbbf24'
+        );
+      }
+    }
+    const records = await fetchSharedLeaderboardRecords(true, 100, activeLeaderboardFetchMode);
     setRemoteLeaderboardRecords(records);
-  }, [activeLeaderboardFetchMode]);
+  }, [activeLeaderboardFetchMode, persistSnapshotAndSync, pushToast]);
 
   useEffect(() => {
-    fetchSharedLeaderboardRecords(false, 50)
+    fetchSharedLeaderboardRecords(false, 100)
       .then((records) => {
         if (records.length > 0) setRemoteLeaderboardRecords(records);
       })
@@ -1174,17 +1195,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLeaderboardListenerActive) return;
-    fetchSharedLeaderboardRecords(false, 50, activeLeaderboardFetchMode)
-      .then((records) => {
-        if (records.length > 0) setRemoteLeaderboardRecords(records);
-      })
-      .catch(() => {});
-
     const unsub = subscribeToLeaderboardRecords(
       (records) => {
         setRemoteLeaderboardRecords(records);
       },
-      50,
+      100,
       activeLeaderboardFetchMode
     );
     return () => {
@@ -1544,6 +1559,9 @@ export default function App() {
     setLeaderboardMode(difficultyMode);
     setPreviousScreen(from);
     setActiveScreen('ranking');
+    if (authUserRef.current?.uid && hasPendingSyncRef.current) {
+      persistSnapshotAndSync(undefined, true).catch(() => {});
+    }
   };
 
   // Start game flow directly (auto-resets if the previous board had no moves left)
@@ -2461,6 +2479,8 @@ export default function App() {
             friendships={friendships}
             incomingFriendRequests={incomingFriendRequestsCount}
             isSignedIn={Boolean(authUser)}
+            hasPendingSync={hasPendingSync}
+            isSyncingCloud={isSyncingCloud}
             onSignInGoogle={handleSignInGoogle}
             onRefreshLeaderboard={refreshLeaderboardFromFirestore}
             onBack={() => setActiveScreen(previousScreen)}

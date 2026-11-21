@@ -250,25 +250,10 @@ function readCachedStorageFallback(): FirestoreLeaderboardRecord[] {
 function writeCachedStorageFallback(records: FirestoreLeaderboardRecord[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(LEADERBOARD_CACHE_STORAGE_KEY, JSON.stringify(records.slice(0, 80)));
+    localStorage.setItem(LEADERBOARD_CACHE_STORAGE_KEY, JSON.stringify(records.slice(0, 100)));
   } catch {
     // ignore storage errors
   }
-}
-
-function mergeRecordBatches(
-  existing: FirestoreLeaderboardRecord[] | null,
-  incoming: FirestoreLeaderboardRecord[]
-): FirestoreLeaderboardRecord[] {
-  const byId = new Map<string, FirestoreLeaderboardRecord>();
-  (existing || []).forEach((r) => byId.set(r.id, r));
-  incoming.forEach((r) => {
-    const prev = byId.get(r.id);
-    if (!prev || r.updatedAt >= prev.updatedAt || Boolean(r.modeBestScores && !prev.modeBestScores)) {
-      byId.set(r.id, r);
-    }
-  });
-  return Array.from(byId.values()).sort((a, b) => b.score - a.score);
 }
 
 export function getCachedRemoteRecords(): FirestoreLeaderboardRecord[] {
@@ -280,7 +265,7 @@ export function getCachedRemoteRecords(): FirestoreLeaderboardRecord[] {
 
 export async function fetchSharedLeaderboardRecords(
   force = false,
-  limitCount = 50,
+  limitCount = 100,
   mode?: DifficultyModeId
 ): Promise<FirestoreLeaderboardRecord[]> {
   const cacheKey = mode || 'overall';
@@ -289,9 +274,9 @@ export async function fetchSharedLeaderboardRecords(
     return cachedRemoteRecords;
   }
 
-  const records = await getLeaderboardRecordsFromFirestore(limitCount, mode);
+  const records = await getLeaderboardRecordsFromFirestore(limitCount, mode, force);
   if (records.length > 0) {
-    cachedRemoteRecords = mergeRecordBatches(cachedRemoteRecords || readCachedStorageFallback(), records);
+    cachedRemoteRecords = records;
     cachedAtByKey[cacheKey] = now;
     writeCachedStorageFallback(cachedRemoteRecords);
     return cachedRemoteRecords;
@@ -302,17 +287,19 @@ export async function fetchSharedLeaderboardRecords(
 
 export function subscribeToLeaderboardRecords(
   onRecords: (records: FirestoreLeaderboardRecord[]) => void,
-  limitCount = 50,
+  limitCount = 100,
   mode?: DifficultyModeId
 ): () => void {
   const cacheKey = mode || 'overall';
   return subscribeToLeaderboardUpdates((records) => {
-    cachedRemoteRecords = mergeRecordBatches(cachedRemoteRecords || readCachedStorageFallback(), records);
-    cachedAtByKey[cacheKey] = Date.now();
-    if (cachedRemoteRecords.length > 0) {
-      writeCachedStorageFallback(cachedRemoteRecords);
+    if (records.length > 0 || isFirestoreOnline()) {
+      cachedRemoteRecords = records;
+      cachedAtByKey[cacheKey] = Date.now();
+      if (records.length > 0) {
+        writeCachedStorageFallback(records);
+      }
+      onRecords(records);
     }
-    onRecords(cachedRemoteRecords);
   }, limitCount, mode);
 }
 
@@ -384,8 +371,7 @@ export function mergeUserIntoLeaderboard(
         activeTheme: e.activeTheme,
         modeBestScores: e.modeBestScores,
       };
-    })
-    .filter((e) => e.id === currentId || e.score > 0);
+    });
 
   let rawEntries: Array<Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>> =
     mappedRemote.length > 0
@@ -459,7 +445,13 @@ export function mergeUserIntoLeaderboard(
     });
   }
 
-  rawEntries.sort((a, b) => b.score - a.score);
+  rawEntries.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const bMax = b.modeBestScores ? Math.max(...Object.values(b.modeBestScores)) : 0;
+    const aMax = a.modeBestScores ? Math.max(...Object.values(a.modeBestScores)) : 0;
+    if (bMax !== aMax) return bMax - aMax;
+    return (b.xp ?? 0) - (a.xp ?? 0);
+  });
 
   let userRank = 1;
   let userEntry: LeaderboardEntry = {

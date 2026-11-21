@@ -29,6 +29,8 @@ interface LeaderboardScreenProps {
   friendships: FriendshipRecord[];
   incomingFriendRequests: number;
   isSignedIn: boolean;
+  hasPendingSync?: boolean;
+  isSyncingCloud?: boolean;
   onSignInGoogle: () => void;
   onRefreshLeaderboard: () => Promise<void> | void;
   onBack: () => void;
@@ -53,6 +55,8 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
   friendships,
   incomingFriendRequests,
   isSignedIn,
+  hasPendingSync = false,
+  isSyncingCloud = false,
   onSignInGoogle,
   onRefreshLeaderboard,
   onBack,
@@ -161,17 +165,28 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           </div>
           <span
             className={`text-[8px] font-bold tracking-wider font-['Orbitron',sans-serif] flex items-center justify-center gap-1.5 leading-none max-w-full truncate ${
-              isOnline ? 'text-emerald-400' : 'text-amber-400'
+              !isOnline || (isSignedIn && hasPendingSync)
+                ? 'text-amber-400'
+                : 'text-emerald-400'
             }`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                !isOnline || (isSignedIn && hasPendingSync)
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-400 animate-pulse'
               }`}
             />
             <span className="truncate">
               {activeGridCfg.boardSize}×{activeGridCfg.boardSize} {activeGridCfg.label} •{' '}
-              {isOnline ? 'LIVE' : 'CACHE'} ({list.length})
+              {isSyncingCloud || isRefreshing
+                ? 'SYNCING...'
+                : !isOnline
+                ? 'OFFLINE CACHE'
+                : isSignedIn && hasPendingSync
+                ? 'SYNC PENDING'
+                : 'LIVE'}{' '}
+              • {list.length} {list.length === 1 ? 'PLAYER' : 'PLAYERS'}
             </span>
           </span>
         </div>
@@ -302,6 +317,19 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-white font-['Orbitron',sans-serif] leading-none">
                 YOU
               </span>
+              {!isSignedIn ? (
+                <span className="text-[7.5px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30 font-['Orbitron',sans-serif] leading-none">
+                  LOCAL ONLY
+                </span>
+              ) : isSyncingCloud ? (
+                <span className="text-[7.5px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 font-['Orbitron',sans-serif] leading-none">
+                  SYNCING
+                </span>
+              ) : hasPendingSync ? (
+                <span className="text-[7.5px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30 font-['Orbitron',sans-serif] leading-none">
+                  SYNC PENDING
+                </span>
+              ) : null}
             </div>
 
             <span className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] leading-none truncate">
@@ -462,6 +490,11 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
                       >
                         LV.{playerLevel}
                       </span>
+                      {isUser && !isSignedIn && (
+                        <span className="text-[7px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-400/30 font-['Orbitron',sans-serif] leading-none">
+                          LOCAL ONLY
+                        </span>
+                      )}
                       {isFriend && (
                         <span className="text-[7px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-['Orbitron',sans-serif] leading-none">
                           FRIEND

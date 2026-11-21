@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { DifficultyModeId } from './types';
 import {
   savePlayerRecordToFirestore,
   getLeaderboardRecordsFromFirestore,
@@ -45,6 +46,7 @@ export interface LeaderboardEntry {
   dailyStreak?: number;
   achievementsCount?: number;
   activeTheme?: string;
+  modeBestScores?: Record<DifficultyModeId, number>;
 }
 
 const NAME_PREFIXES = [
@@ -132,7 +134,7 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     id: 'bot_1',
     username: 'NovaBlade',
     tag: '9421',
-    score: 12450,
+    score: 14800,
     avatarLetter: 'N',
     tier: 'Master',
     isBenchmark: true,
@@ -146,12 +148,13 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     dailyStreak: 9,
     achievementsCount: 8,
     activeTheme: 'prism-aurora',
+    modeBestScores: { easy: 14800, classic: 12450, hard: 5800, extreme: 2450 },
   },
   {
     id: 'bot_2',
     username: 'CyberGhost',
     tag: '8114',
-    score: 8690,
+    score: 10200,
     avatarLetter: 'C',
     tier: 'Diamond',
     isBenchmark: true,
@@ -165,12 +168,13 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     dailyStreak: 5,
     achievementsCount: 7,
     activeTheme: 'midas-gold',
+    modeBestScores: { easy: 10200, classic: 8690, hard: 4150, extreme: 1780 },
   },
   {
     id: 'bot_3',
     username: 'VortexPilot',
     tag: '3720',
-    score: 5420,
+    score: 6500,
     avatarLetter: 'V',
     tier: 'Platinum',
     isBenchmark: true,
@@ -184,12 +188,13 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     dailyStreak: 4,
     achievementsCount: 5,
     activeTheme: 'crimson-inferno',
+    modeBestScores: { easy: 6500, classic: 5420, hard: 2750, extreme: 1180 },
   },
   {
     id: 'bot_4',
     username: 'PulseHunter',
     tag: '6105',
-    score: 3180,
+    score: 3900,
     avatarLetter: 'P',
     tier: 'Platinum',
     isBenchmark: true,
@@ -203,12 +208,13 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     dailyStreak: 2,
     achievementsCount: 4,
     activeTheme: 'solar-flare',
+    modeBestScores: { easy: 3900, classic: 3180, hard: 1650, extreme: 740 },
   },
   {
     id: 'bot_5',
     username: 'EchoDrifter',
     tag: '2289',
-    score: 1850,
+    score: 2100,
     avatarLetter: 'E',
     tier: 'Silver',
     isBenchmark: true,
@@ -222,11 +228,12 @@ export const DEFAULT_COMMUNITY_BENCHMARKS: Array<Omit<LeaderboardEntry, 'rank' |
     dailyStreak: 1,
     achievementsCount: 2,
     activeTheme: 'emerald-matrix',
+    modeBestScores: { easy: 2100, classic: 1850, hard: 920, extreme: 410 },
   },
 ];
 
 let cachedRemoteRecords: FirestoreLeaderboardRecord[] | null = null;
-let cachedAtMs = 0;
+const cachedAtByKey: Record<string, number> = {};
 
 function readCachedStorageFallback(): FirestoreLeaderboardRecord[] {
   if (typeof window === 'undefined') return [];
@@ -243,10 +250,25 @@ function readCachedStorageFallback(): FirestoreLeaderboardRecord[] {
 function writeCachedStorageFallback(records: FirestoreLeaderboardRecord[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(LEADERBOARD_CACHE_STORAGE_KEY, JSON.stringify(records.slice(0, 50)));
+    localStorage.setItem(LEADERBOARD_CACHE_STORAGE_KEY, JSON.stringify(records.slice(0, 80)));
   } catch {
     // ignore storage errors
   }
+}
+
+function mergeRecordBatches(
+  existing: FirestoreLeaderboardRecord[] | null,
+  incoming: FirestoreLeaderboardRecord[]
+): FirestoreLeaderboardRecord[] {
+  const byId = new Map<string, FirestoreLeaderboardRecord>();
+  (existing || []).forEach((r) => byId.set(r.id, r));
+  incoming.forEach((r) => {
+    const prev = byId.get(r.id);
+    if (!prev || r.updatedAt >= prev.updatedAt || Boolean(r.modeBestScores && !prev.modeBestScores)) {
+      byId.set(r.id, r);
+    }
+  });
+  return Array.from(byId.values()).sort((a, b) => b.score - a.score);
 }
 
 export function getCachedRemoteRecords(): FirestoreLeaderboardRecord[] {
@@ -258,19 +280,21 @@ export function getCachedRemoteRecords(): FirestoreLeaderboardRecord[] {
 
 export async function fetchSharedLeaderboardRecords(
   force = false,
-  limitCount = 50
+  limitCount = 50,
+  mode?: DifficultyModeId
 ): Promise<FirestoreLeaderboardRecord[]> {
+  const cacheKey = mode || 'overall';
   const now = Date.now();
-  if (!force && cachedRemoteRecords && now - cachedAtMs < LEADERBOARD_CACHE_TTL_MS) {
+  if (!force && cachedRemoteRecords && now - (cachedAtByKey[cacheKey] || 0) < LEADERBOARD_CACHE_TTL_MS) {
     return cachedRemoteRecords;
   }
 
-  const records = await getLeaderboardRecordsFromFirestore(limitCount);
+  const records = await getLeaderboardRecordsFromFirestore(limitCount, mode);
   if (records.length > 0) {
-    cachedRemoteRecords = records;
-    cachedAtMs = now;
-    writeCachedStorageFallback(records);
-    return records;
+    cachedRemoteRecords = mergeRecordBatches(cachedRemoteRecords || readCachedStorageFallback(), records);
+    cachedAtByKey[cacheKey] = now;
+    writeCachedStorageFallback(cachedRemoteRecords);
+    return cachedRemoteRecords;
   }
 
   return getCachedRemoteRecords();
@@ -278,21 +302,36 @@ export async function fetchSharedLeaderboardRecords(
 
 export function subscribeToLeaderboardRecords(
   onRecords: (records: FirestoreLeaderboardRecord[]) => void,
-  limitCount = 50
+  limitCount = 50,
+  mode?: DifficultyModeId
 ): () => void {
+  const cacheKey = mode || 'overall';
   return subscribeToLeaderboardUpdates((records) => {
-    cachedRemoteRecords = records;
-    cachedAtMs = Date.now();
-    if (records.length > 0) {
-      writeCachedStorageFallback(records);
+    cachedRemoteRecords = mergeRecordBatches(cachedRemoteRecords || readCachedStorageFallback(), records);
+    cachedAtByKey[cacheKey] = Date.now();
+    if (cachedRemoteRecords.length > 0) {
+      writeCachedStorageFallback(cachedRemoteRecords);
     }
-    onRecords(records);
-  }, limitCount);
+    onRecords(cachedRemoteRecords);
+  }, limitCount, mode);
+}
+
+export function getScoreForGrid(
+  entry: { score: number; modeBestScores?: Record<DifficultyModeId, number> },
+  gridMode?: DifficultyModeId
+): number {
+  if (!gridMode) return Math.max(0, entry.score || 0);
+  if (entry.modeBestScores) {
+    return Math.max(0, entry.modeBestScores[gridMode] ?? 0);
+  }
+  // Legacy records before per-grid leaderboards only reflect Classic 8x8
+  return gridMode === 'classic' ? Math.max(0, entry.score || 0) : 0;
 }
 
 /**
  * Pure synchronous leaderboard builder: merges remote Firestore records (or offline benchmarks)
  * with the current player's live profile & verified stats in memory — zero extra Firestore reads.
+ * When `gridMode` is provided, ranks players strictly by that grid size's best score.
  */
 export function mergeUserIntoLeaderboard(
   remoteRecords: FirestoreLeaderboardRecord[],
@@ -300,47 +339,76 @@ export function mergeUserIntoLeaderboard(
   userBestScore: number,
   userStats?: PlayerStats,
   activeTheme?: string,
-  playerIdOverride?: string
+  playerIdOverride?: string,
+  gridMode?: DifficultyModeId,
+  userModeBestScores?: Record<DifficultyModeId, number>
 ): { list: LeaderboardEntry[]; userRank: number; userEntry: LeaderboardEntry } {
   const currentId = playerIdOverride || getPlayerId();
   const safeUsername = (userProfile?.username || 'Player').trim() || 'Player';
   const safeTag = userProfile?.tag ? userProfile.tag.trim() : undefined;
   const safeLetter = (userProfile?.avatarLetter || safeUsername.charAt(0) || 'P').toUpperCase();
   const safeAvatarUrl = isValidAvatarUrl(userProfile?.avatarUrl) ? userProfile.avatarUrl : undefined;
-  const safeScore = Math.max(0, userBestScore || 0);
+  const effectiveUserModes: Record<DifficultyModeId, number> = {
+    easy: Math.max(0, userModeBestScores?.easy ?? 0),
+    classic: Math.max(0, userModeBestScores?.classic ?? userBestScore ?? 0),
+    hard: Math.max(0, userModeBestScores?.hard ?? userStats?.hardBestScore ?? 0),
+    extreme: Math.max(0, userModeBestScores?.extreme ?? userStats?.extremeBestScore ?? 0),
+  };
+  const safeUserScore = gridMode
+    ? Math.max(0, effectiveUserModes[gridMode] ?? 0)
+    : Math.max(0, userBestScore || 0);
   const userLevel = userStats ? getLevelInfo(userStats.xp).level : 1;
 
+  const mappedRemote: Array<Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>> = remoteRecords
+    .map((e) => {
+      const check = validatePlayerName(e.username || '');
+      const safeName = check.isValid ? e.username : 'Player';
+      const gridScore = getScoreForGrid(e, gridMode);
+      return {
+        id: e.id,
+        username: safeName,
+        tag: e.tag,
+        score: gridScore,
+        avatarLetter: (e.avatarLetter || safeName.charAt(0) || 'P').toUpperCase(),
+        avatarUrl: isValidAvatarUrl(e.avatarUrl) ? e.avatarUrl : undefined,
+        tier: getTierFromScore(gridScore),
+        xp: e.xp,
+        level: e.level,
+        totalPlaytimeSec: e.totalPlaytimeSec,
+        longestSessionSec: e.longestSessionSec,
+        gamesPlayed: e.gamesPlayed,
+        totalLinesCleared: e.totalLinesCleared,
+        bestCombo: e.bestCombo,
+        dailyStreak: e.dailyStreak,
+        achievementsCount: e.achievementsCount,
+        activeTheme: e.activeTheme,
+        modeBestScores: e.modeBestScores,
+      };
+    })
+    .filter((e) => e.id === currentId || e.score > 0);
+
   let rawEntries: Array<Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>> =
-    remoteRecords.length > 0
-      ? remoteRecords.map((e) => {
-          const check = validatePlayerName(e.username || '');
-          const safeName = check.isValid ? e.username : 'Player';
+    mappedRemote.length > 0
+      ? mappedRemote
+      : DEFAULT_COMMUNITY_BENCHMARKS.map((b) => {
+          const gridScore = getScoreForGrid(b, gridMode);
           return {
-            id: e.id,
-            username: safeName,
-            tag: e.tag,
-            score: e.score,
-            avatarLetter: (e.avatarLetter || safeName.charAt(0) || 'P').toUpperCase(),
-            avatarUrl: isValidAvatarUrl(e.avatarUrl) ? e.avatarUrl : undefined,
-            tier: e.tier,
-            xp: e.xp,
-            level: e.level,
-            totalPlaytimeSec: e.totalPlaytimeSec,
-            longestSessionSec: e.longestSessionSec,
-            gamesPlayed: e.gamesPlayed,
-            totalLinesCleared: e.totalLinesCleared,
-            bestCombo: e.bestCombo,
-            dailyStreak: e.dailyStreak,
-            achievementsCount: e.achievementsCount,
-            activeTheme: e.activeTheme,
+            ...b,
+            score: gridScore,
+            tier: getTierFromScore(gridScore),
           };
-        })
-      : [...DEFAULT_COMMUNITY_BENCHMARKS];
+        });
 
   const existingUserIndex = rawEntries.findIndex((e) => e.id === currentId);
   if (existingUserIndex >= 0) {
     const existing = rawEntries[existingUserIndex];
-    const bestOfScores = Math.max(safeScore, existing.score);
+    const bestOfScores = Math.max(safeUserScore, existing.score);
+    const mergedModes: Record<DifficultyModeId, number> = {
+      easy: Math.max(effectiveUserModes.easy, existing.modeBestScores?.easy ?? 0),
+      classic: Math.max(effectiveUserModes.classic, existing.modeBestScores?.classic ?? 0),
+      hard: Math.max(effectiveUserModes.hard, existing.modeBestScores?.hard ?? 0),
+      extreme: Math.max(effectiveUserModes.extreme, existing.modeBestScores?.extreme ?? 0),
+    };
     rawEntries[existingUserIndex] = {
       ...existing,
       score: bestOfScores,
@@ -349,6 +417,7 @@ export function mergeUserIntoLeaderboard(
       tag: safeTag,
       avatarLetter: safeLetter,
       avatarUrl: safeAvatarUrl,
+      modeBestScores: mergedModes,
       ...(userStats
         ? {
             xp: Math.max(userStats.xp, existing.xp || 0),
@@ -372,10 +441,10 @@ export function mergeUserIntoLeaderboard(
       id: currentId,
       username: safeUsername,
       tag: safeTag,
-      score: safeScore,
+      score: safeUserScore,
       avatarLetter: safeLetter,
       avatarUrl: safeAvatarUrl,
-      tier: getTierFromScore(safeScore),
+      tier: getTierFromScore(safeUserScore),
       xp: userStats?.xp ?? 0,
       level: userLevel,
       totalPlaytimeSec: userStats?.totalPlaytimeSec ?? 0,
@@ -386,6 +455,7 @@ export function mergeUserIntoLeaderboard(
       dailyStreak: userStats?.dailyStreak ?? 1,
       achievementsCount: userStats?.unlockedAchievements.length ?? 0,
       activeTheme,
+      modeBestScores: effectiveUserModes,
     });
   }
 
@@ -397,10 +467,10 @@ export function mergeUserIntoLeaderboard(
     rank: 1,
     username: safeUsername,
     tag: safeTag,
-    score: safeScore,
+    score: safeUserScore,
     avatarLetter: safeLetter,
     avatarUrl: safeAvatarUrl,
-    tier: getTierFromScore(safeScore),
+    tier: getTierFromScore(safeUserScore),
     isCurrentUser: true,
     xp: userStats?.xp ?? 0,
     level: userLevel,
@@ -412,6 +482,7 @@ export function mergeUserIntoLeaderboard(
     dailyStreak: userStats?.dailyStreak ?? 1,
     achievementsCount: userStats?.unlockedAchievements.length ?? 0,
     activeTheme,
+    modeBestScores: effectiveUserModes,
   };
 
   const list: LeaderboardEntry[] = rawEntries.map((e, idx) => {
@@ -441,7 +512,9 @@ export function buildLeaderboard(
   userBestScore: number,
   userStats?: PlayerStats,
   activeTheme?: string,
-  playerIdOverride?: string
+  playerIdOverride?: string,
+  gridMode?: DifficultyModeId,
+  userModeBestScores?: Record<DifficultyModeId, number>
 ): { list: LeaderboardEntry[]; userRank: number; userEntry: LeaderboardEntry } {
   return mergeUserIntoLeaderboard(
     getCachedRemoteRecords(),
@@ -449,7 +522,9 @@ export function buildLeaderboard(
     userBestScore,
     userStats,
     activeTheme,
-    playerIdOverride
+    playerIdOverride,
+    gridMode,
+    userModeBestScores
   );
 }
 
@@ -461,7 +536,8 @@ export async function savePlayerToLeaderboard(
   profile: PlayerProfile,
   bestScore: number,
   stats?: PlayerStats,
-  activeTheme?: string
+  activeTheme?: string,
+  modeBestScores?: Record<DifficultyModeId, number>
 ): Promise<boolean> {
   const authUid = getAuthenticatedPlayerId();
   if (!authUid) return false;
@@ -502,6 +578,7 @@ export async function savePlayerToLeaderboard(
         }
       : {}),
     ...(activeTheme ? { activeTheme } : {}),
+    ...(modeBestScores ? { modeBestScores } : {}),
   };
 
   return savePlayerRecordToFirestore(firestoreRecord);

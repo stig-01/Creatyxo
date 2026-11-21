@@ -27,6 +27,7 @@ import {
   playGameOverSound,
   playPickSound,
   playPlaceSound,
+  playRewardChimeSound,
   startBackgroundMusic,
   stopBackgroundMusic,
   setBackgroundMusicEnabled,
@@ -130,6 +131,9 @@ export interface ToastNotice {
   title: string;
   subtitle: string;
   accent: string;
+  badge?: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export default function App() {
@@ -271,6 +275,7 @@ export default function App() {
     }
     return 'classic';
   });
+  const [leaderboardMode, setLeaderboardMode] = useState<DifficultyModeId>(difficultyMode);
   const activeDifficulty = getDifficultyConfig(difficultyMode);
   const boardSize = activeDifficulty.boardSize;
 
@@ -375,6 +380,8 @@ export default function App() {
     }
     return true;
   });
+  const soundEnabledRef = useRef<boolean>(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
   const [musicEnabled, setMusicEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('creatyxo_music_enabled');
@@ -501,12 +508,70 @@ export default function App() {
 
   const lastPreviewRef = useRef<PlacementCoordinate | null>(null);
 
-  const pushToast = useCallback((title: string, subtitle: string, accent: string) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setToastNotices((prev) => [...prev.slice(-2), { id, title, subtitle, accent }]);
-    setTimeout(() => {
-      setToastNotices((prev) => prev.filter((t) => t.id !== id));
-    }, 3800);
+  const toastQueueRef = useRef<ToastNotice[]>([]);
+  const toastTimersRef = useRef<Map<string, number>>(new Map());
+  const notifiedQuestsRef = useRef<Set<string>>(new Set());
+
+  const dismissToast = useCallback((id: string) => {
+    const existingTimer = toastTimersRef.current.get(id);
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+      toastTimersRef.current.delete(id);
+    }
+
+    setToastNotices((prev) => {
+      const remaining = prev.filter((t) => t.id !== id);
+      if (remaining.length < 3 && toastQueueRef.current.length > 0) {
+        const nextToast = toastQueueRef.current.shift()!;
+        const timerId = window.setTimeout(() => {
+          dismissToast(nextToast.id);
+        }, 4400);
+        toastTimersRef.current.set(nextToast.id, timerId);
+        return [...remaining, nextToast];
+      }
+      return remaining;
+    });
+  }, []);
+
+  const pushToast = useCallback(
+    (
+      title: string,
+      subtitle: string,
+      accent: string,
+      options?: { badge?: string; actionLabel?: string; onAction?: () => void }
+    ) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const notice: ToastNotice = {
+        id,
+        title,
+        subtitle,
+        accent,
+        badge: options?.badge,
+        actionLabel: options?.actionLabel,
+        onAction: options?.onAction,
+      };
+
+      setToastNotices((prev) => {
+        if (prev.length >= 3) {
+          toastQueueRef.current.push(notice);
+          return prev;
+        }
+        const timerId = window.setTimeout(() => {
+          dismissToast(id);
+        }, 4400);
+        toastTimersRef.current.set(id, timerId);
+        return [...prev, notice];
+      });
+    },
+    [dismissToast]
+  );
+
+  useEffect(() => {
+    const timers = toastTimersRef.current;
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+      timers.clear();
+    };
   }, []);
 
   const bestScoreRef = useRef<number>(bestScore);
@@ -581,6 +646,9 @@ export default function App() {
   const commitStatsUpdate = useCallback(
     (updater: (prev: PlayerStats) => PlayerStats, bestScoreOverride?: number): PlayerStats => {
       const prev = playerStatsRef.current;
+      const prevLevel = getLevelInfo(prev.xp).level;
+      const prevSkins = new Set(prev.unlockedBlockSkins || ['classic-gloss']);
+
       const updated = updater(prev);
       const effectiveBest = Math.max(bestScoreRef.current, bestScoreOverride || 0);
       const { nextStats, newlyUnlocked } = evaluateAchievements(updated, effectiveBest);
@@ -588,18 +656,136 @@ export default function App() {
       setPlayerStats(nextStats);
       savePlayerStats(nextStats);
 
-      if (newlyUnlocked.length > 0) {
-        triggerHaptic('clear', hapticsEnabled);
-        newlyUnlocked.forEach((ach: AchievementDef) => {
-          const rewardTheme = ach.unlockThemeId ? GAME_THEMES[ach.unlockThemeId] : null;
-          pushToast(
-            `${ach.badgeIcon} ${ach.name.toUpperCase()}`,
-            rewardTheme
-              ? `+${ach.xpReward} XP • Unlocked ${rewardTheme.name} theme!`
-              : `Achievement Unlocked • +${ach.xpReward} XP`,
-            displayTheme.accentHex
-          );
+      const todayKey = getTodayDateKey();
+      const prevDaily = prev.dailyProgress.date === todayKey ? prev.dailyProgress : null;
+      const nextDaily = nextStats.dailyProgress.date === todayKey ? nextStats.dailyProgress : null;
+      const newlyCompletedQuests: DailyChallengeDef[] = [];
+
+      if (nextDaily) {
+        const challenges = getDailyChallenges(todayKey);
+        challenges.forEach((ch) => {
+          const questKey = `${todayKey}:${ch.id}`;
+          if (
+            nextDaily.claimedIds.includes(ch.id) ||
+            notifiedQuestsRef.current.has(questKey)
+          ) {
+            return;
+          }
+          const prevVal = prevDaily ? prevDaily[ch.metric] || 0 : 0;
+          const nextVal = nextDaily[ch.metric] || 0;
+          if (nextVal >= ch.target && prevVal < ch.target) {
+            notifiedQuestsRef.current.add(questKey);
+            newlyCompletedQuests.push(ch);
+          }
         });
+      }
+
+      const nextSkins = nextStats.unlockedBlockSkins || ['classic-gloss'];
+      const newlyUnlockedSkins = nextSkins.filter((id) => !prevSkins.has(id));
+      const nextLevelInfo = getLevelInfo(nextStats.xp);
+      const leveledUp = nextLevelInfo.level > prevLevel;
+
+      const hasCelebration =
+        newlyCompletedQuests.length > 0 ||
+        newlyUnlocked.length > 0 ||
+        newlyUnlockedSkins.length > 0 ||
+        leveledUp;
+
+      if (hasCelebration) {
+        triggerHaptic('clear', hapticsEnabled);
+        playRewardChimeSound(soundEnabledRef.current);
+      }
+
+      newlyCompletedQuests.forEach((ch) => {
+        pushToast(
+          `🎯 QUEST FINISHED: ${ch.title.toUpperCase()}`,
+          `Tap CLAIM to collect +${ch.xpReward} XP!`,
+          '#34d399',
+          {
+            badge: 'QUEST READY',
+            actionLabel: 'CLAIM',
+            onAction: () => {
+              setIsThemesOpen(false);
+              setIsMyProfileOpen(false);
+              setIsFriendsOpen(false);
+              setSelectedPlayerProfileId(null);
+              setProgressionModalTab('daily');
+            },
+          }
+        );
+      });
+
+      newlyUnlocked.forEach((ach: AchievementDef) => {
+        const rewardTheme = ach.unlockThemeId ? GAME_THEMES[ach.unlockThemeId] : null;
+        pushToast(
+          `${ach.badgeIcon} ${ach.name.toUpperCase()}`,
+          `Achievement Unlocked • +${ach.xpReward} XP`,
+          displayTheme.accentHex,
+          {
+            badge: 'ACHIEVEMENT',
+            actionLabel: 'VIEW',
+            onAction: () => {
+              setIsThemesOpen(false);
+              setProgressionModalTab('achievements');
+            },
+          }
+        );
+        if (rewardTheme) {
+          pushToast(
+            `🎨 NEW THEME: ${rewardTheme.name.toUpperCase()}`,
+            `${rewardTheme.tagline} • Ready to equip!`,
+            rewardTheme.accentHex,
+            {
+              badge: 'THEME UNLOCKED',
+              actionLabel: 'EQUIP',
+              onAction: () => {
+                setProgressionModalTab(null);
+                setIsMyProfileOpen(false);
+                setIsFriendsOpen(false);
+                setSelectedPlayerProfileId(null);
+                setThemesModalTab('themes');
+                setIsThemesOpen(true);
+              },
+            }
+          );
+        }
+      });
+
+      newlyUnlockedSkins.forEach((skinId) => {
+        const skin = BLOCK_SKINS[skinId];
+        if (!skin) return;
+        pushToast(
+          `${skin.badgeIcon} NEW SKIN: ${skin.name}`,
+          `${skin.requiredStreakDays}-Day Streak Reward Unlocked!`,
+          skin.accentHex,
+          {
+            badge: 'SKIN UNLOCKED',
+            actionLabel: 'EQUIP',
+            onAction: () => {
+              setProgressionModalTab(null);
+              setIsMyProfileOpen(false);
+              setThemesModalTab('skins');
+              setIsThemesOpen(true);
+            },
+          }
+        );
+      });
+
+      if (leveledUp) {
+        pushToast(
+          `⭐ LEVEL ${nextLevelInfo.level} REACHED!`,
+          `Rank promoted to ${nextLevelInfo.rankTitle.toUpperCase()}`,
+          '#f6c445',
+          {
+            badge: 'LEVEL UP',
+            actionLabel: 'PROFILE',
+            onAction: () => {
+              setProgressionModalTab(null);
+              setIsThemesOpen(false);
+              setIsMyProfileOpen(true);
+            },
+          }
+        );
       }
 
       return nextStats;
@@ -614,25 +800,59 @@ export default function App() {
       pushToast(
         `🔥 ${boot.stats.dailyStreak}-DAY STREAK!`,
         `Daily check-in reward: +${boot.streakRewardXp} XP`,
-        '#fbbf24'
+        '#fbbf24',
+        {
+          badge: 'DAILY CHECK-IN',
+          actionLabel: 'DAILY',
+          onAction: () => setProgressionModalTab('daily'),
+        }
       );
     }
     if (boot?.newlyUnlockedSkins && boot.newlyUnlockedSkins.length > 0) {
       boot.newlyUnlockedSkins.forEach((skin) => {
         pushToast(
-          `${skin.badgeIcon} BLOCK SKIN UNLOCKED!`,
-          `${skin.name} • ${skin.requiredStreakDays}-Day Streak Reward`,
-          skin.accentHex
+          `${skin.badgeIcon} NEW SKIN: ${skin.name}`,
+          `${skin.requiredStreakDays}-Day Streak Reward Unlocked!`,
+          skin.accentHex,
+          {
+            badge: 'SKIN UNLOCKED',
+            actionLabel: 'EQUIP',
+            onAction: () => {
+              setThemesModalTab('skins');
+              setIsThemesOpen(true);
+            },
+          }
         );
       });
     }
-    const { nextStats } = evaluateAchievements(playerStatsRef.current, bestScoreRef.current);
+    const { nextStats, newlyUnlocked } = evaluateAchievements(
+      playerStatsRef.current,
+      bestScoreRef.current
+    );
     if (nextStats.unlockedAchievements.length !== playerStatsRef.current.unlockedAchievements.length) {
       playerStatsRef.current = nextStats;
       setPlayerStats(nextStats);
       savePlayerStats(nextStats);
+      newlyUnlocked.forEach((ach) => {
+        const rewardTheme = ach.unlockThemeId ? GAME_THEMES[ach.unlockThemeId] : null;
+        if (rewardTheme) {
+          pushToast(
+            `🎨 NEW THEME: ${rewardTheme.name.toUpperCase()}`,
+            `Unlocked via ${ach.name} • Ready to equip!`,
+            rewardTheme.accentHex,
+            {
+              badge: 'THEME UNLOCKED',
+              actionLabel: 'EQUIP',
+              onAction: () => {
+                setThemesModalTab('themes');
+                setIsThemesOpen(true);
+              },
+            }
+          );
+        }
+      });
     }
-  }, []);
+  }, [pushToast]);
 
   // Auth lifecycle: pull cloud save BEFORE pushing, merge conflict-free, and flush offline pending syncs
   useEffect(() => {
@@ -933,10 +1153,12 @@ export default function App() {
   }, [score, bestScore, modeBestScore, difficultyMode]);
 
   // One-time cached leaderboard fetch on mount (respects 60s TTL; zero per-second churn)
+  const activeLeaderboardFetchMode = activeScreen === 'ranking' ? leaderboardMode : undefined;
+
   const refreshLeaderboardFromFirestore = useCallback(async () => {
-    const records = await fetchSharedLeaderboardRecords(true, 50);
+    const records = await fetchSharedLeaderboardRecords(true, 50, activeLeaderboardFetchMode);
     setRemoteLeaderboardRecords(records);
-  }, []);
+  }, [activeLeaderboardFetchMode]);
 
   useEffect(() => {
     fetchSharedLeaderboardRecords(false, 50)
@@ -952,16 +1174,26 @@ export default function App() {
 
   useEffect(() => {
     if (!isLeaderboardListenerActive) return;
-    const unsub = subscribeToLeaderboardRecords((records) => {
-      setRemoteLeaderboardRecords(records);
-    }, 50);
+    fetchSharedLeaderboardRecords(false, 50, activeLeaderboardFetchMode)
+      .then((records) => {
+        if (records.length > 0) setRemoteLeaderboardRecords(records);
+      })
+      .catch(() => {});
+
+    const unsub = subscribeToLeaderboardRecords(
+      (records) => {
+        setRemoteLeaderboardRecords(records);
+      },
+      50,
+      activeLeaderboardFetchMode
+    );
     return () => {
       unsub();
     };
-  }, [isLeaderboardListenerActive]);
+  }, [isLeaderboardListenerActive, activeLeaderboardFetchMode]);
 
-  // Compute allPlayers, userRank & myLeaderboardEntry synchronously in memory (ZERO Firestore reads!)
-  const { list: allPlayers, userRank, userEntry: myLeaderboardEntry } = useMemo(
+  // Overall leaderboard (used for Friends & player lookups across all grids)
+  const { list: allPlayers, userEntry: overallUserEntry } = useMemo(
     () =>
       mergeUserIntoLeaderboard(
         remoteLeaderboardRecords,
@@ -969,9 +1201,73 @@ export default function App() {
         bestScore,
         playerStats,
         activeThemeId,
-        currentPlayerId
+        currentPlayerId,
+        undefined,
+        modeBestScores
       ),
-    [remoteLeaderboardRecords, playerProfile, bestScore, playerStats, activeThemeId, currentPlayerId]
+    [
+      remoteLeaderboardRecords,
+      playerProfile,
+      bestScore,
+      playerStats,
+      activeThemeId,
+      currentPlayerId,
+      modeBestScores,
+    ]
+  );
+
+  // Active gameplay/home grid ranking (so Home & Gameplay HUD #rank matches selected board)
+  const { userRank } = useMemo(
+    () =>
+      mergeUserIntoLeaderboard(
+        remoteLeaderboardRecords,
+        playerProfile,
+        bestScore,
+        playerStats,
+        activeThemeId,
+        currentPlayerId,
+        difficultyMode,
+        modeBestScores
+      ),
+    [
+      remoteLeaderboardRecords,
+      playerProfile,
+      bestScore,
+      playerStats,
+      activeThemeId,
+      currentPlayerId,
+      difficultyMode,
+      modeBestScores,
+    ]
+  );
+
+  // Selected Leaderboard Screen tab ranking (10x10 / 8x8 / 6x6 / 4x4)
+  const {
+    list: rankingPlayers,
+    userRank: rankingUserRank,
+    userEntry: rankingUserEntry,
+  } = useMemo(
+    () =>
+      mergeUserIntoLeaderboard(
+        remoteLeaderboardRecords,
+        playerProfile,
+        bestScore,
+        playerStats,
+        activeThemeId,
+        currentPlayerId,
+        leaderboardMode,
+        modeBestScores
+      ),
+    [
+      remoteLeaderboardRecords,
+      playerProfile,
+      bestScore,
+      playerStats,
+      activeThemeId,
+      currentPlayerId,
+      leaderboardMode,
+      modeBestScores,
+    ]
   );
 
   // Scoped real-time friendships sync — strictly gated on authenticated Firebase UID
@@ -1225,6 +1521,7 @@ export default function App() {
   // Switch difficulty mode & board size cleanly
   const handleSelectDifficulty = useCallback(
     (newMode: DifficultyModeId) => {
+      setLeaderboardMode(newMode);
       if (newMode === difficultyMode) {
         triggerHaptic('tap', hapticsEnabled);
         return;
@@ -1244,6 +1541,7 @@ export default function App() {
     triggerHaptic('tap', hapticsEnabled);
     setPreviewThemeId(null);
     setPreviewBlockSkinId(null);
+    setLeaderboardMode(difficultyMode);
     setPreviousScreen(from);
     setActiveScreen('ranking');
   };
@@ -1873,12 +2171,12 @@ export default function App() {
   };
 
   const selectedProfileEntry = useMemo(() => {
-    if (isMyProfileOpen) return myLeaderboardEntry;
+    if (isMyProfileOpen) return overallUserEntry;
     if (selectedPlayerProfileId) {
       return allPlayers.find((p) => p.id === selectedPlayerProfileId) || null;
     }
     return null;
-  }, [isMyProfileOpen, myLeaderboardEntry, selectedPlayerProfileId, allPlayers]);
+  }, [isMyProfileOpen, overallUserEntry, selectedPlayerProfileId, allPlayers]);
 
   const playerLevelInfo = useMemo(() => getLevelInfo(playerStats.xp), [playerStats.xp]);
 
@@ -1897,7 +2195,7 @@ export default function App() {
   return (
     <div
       style={{ backgroundColor: displayTheme.outerBg }}
-      className="w-full h-full h-[100dvh] max-h-[100dvh] text-slate-100 flex flex-col items-center justify-center select-none font-['Orbitron',sans-serif] overflow-hidden p-3 sm:p-5 touch-none transition-colors duration-300"
+      className="w-full h-full text-slate-100 flex flex-col items-center justify-center select-none font-['Orbitron',sans-serif] overflow-hidden p-0 sm:p-2 touch-none transition-colors duration-300"
     >
       {/* Name & Profile Picture Modal */}
       <NameSetupModal
@@ -2039,40 +2337,82 @@ export default function App() {
         }}
       />
 
+      {/* Floating Top Notifications (Renders above both screens AND open modals) */}
+      {toastNotices.length > 0 && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-24px)] max-w-[380px] pointer-events-none flex flex-col items-center gap-2.5">
+          {toastNotices.map((toast) => (
+            <div
+              key={toast.id}
+              style={{
+                backgroundColor: displayTheme.cardBg,
+                borderColor: toast.accent,
+                boxShadow: `0 8px 28px rgba(0,0,0,0.72), 0 0 18px ${displayTheme.accentGlowRgba}`,
+              }}
+              className={`w-full rounded-2xl border px-3.5 py-3 flex items-center justify-between gap-2.5 animate-fadeIn ${
+                dragging ? 'pointer-events-none' : 'pointer-events-auto'
+              }`}
+            >
+              <div className="flex flex-col text-left min-w-0 flex-1 gap-1.5">
+                {toast.badge && (
+                  <span
+                    style={{ color: toast.accent }}
+                    className="text-[7.5px] font-black font-['Orbitron',sans-serif] tracking-widest uppercase leading-none"
+                  >
+                    {toast.badge}
+                  </span>
+                )}
+                <span
+                  style={{ color: toast.badge ? '#ffffff' : toast.accent }}
+                  className="text-[10.5px] font-black font-['Orbitron',sans-serif] tracking-wide leading-tight truncate"
+                >
+                  {toast.title}
+                </span>
+                <span className="text-[9px] font-bold text-slate-300 font-['Orbitron',sans-serif] leading-snug">
+                  {toast.subtitle}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {toast.actionLabel && toast.onAction && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.onAction?.();
+                      dismissToast(toast.id);
+                    }}
+                    style={{
+                      margin: 0,
+                      backgroundColor: toast.accent,
+                      color: '#070a11',
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                  >
+                    {toast.actionLabel}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label="Dismiss notification"
+                  onClick={() => dismissToast(toast.id)}
+                  style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                  className="w-7 h-7 rounded-lg bg-[#141d2f] hover:bg-[#1a263d] border text-slate-400 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Main Container: Well inset from screen edges on all devices */}
       <main
         style={{
           backgroundColor: displayTheme.cardBg,
           borderColor: displayTheme.cardBorder,
         }}
-        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-[96vh] rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col mx-auto relative overflow-hidden px-4 py-3.5 sm:px-6 sm:py-5 justify-between transition-colors duration-300"
+        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-full rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col mx-auto relative overflow-hidden px-3.5 py-3.5 sm:px-6 sm:py-5 justify-between gap-2 transition-colors duration-300"
       >
-        {/* Non-blocking Achievement / Streak / Friend Toast Banners */}
-        {toastNotices.length > 0 && (
-          <div className="absolute top-3 left-3 right-3 z-50 pointer-events-none flex flex-col items-center gap-1.5">
-            {toastNotices.map((toast) => (
-              <div
-                key={toast.id}
-                style={{
-                  backgroundColor: displayTheme.surfaceBg,
-                  borderColor: toast.accent,
-                  boxShadow: `0 6px 24px rgba(0,0,0,0.65), 0 0 14px ${displayTheme.accentGlowRgba}`,
-                }}
-                className="w-full max-w-[330px] rounded-xl border px-3 py-2 flex flex-col items-center text-center animate-fadeIn"
-              >
-                <span
-                  style={{ color: toast.accent }}
-                  className="text-[10.5px] font-black font-['Orbitron',sans-serif] tracking-wider"
-                >
-                  {toast.title}
-                </span>
-                <span className="text-[9px] font-bold text-slate-200 font-['Orbitron',sans-serif] mt-0.5">
-                  {toast.subtitle}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* VIEW 1: HOME SCREEN */}
         {activeScreen === 'home' && (
@@ -2110,9 +2450,11 @@ export default function App() {
         {/* VIEW 2: LEADERBOARD SCREEN */}
         {activeScreen === 'ranking' && (
           <LeaderboardScreen
-            entries={allPlayers}
-            userRank={userRank}
-            userEntry={myLeaderboardEntry}
+            entries={rankingPlayers}
+            userRank={rankingUserRank}
+            userEntry={rankingUserEntry}
+            selectedMode={leaderboardMode}
+            onSelectMode={setLeaderboardMode}
             currentPlayerId={currentPlayerId}
             playerStats={playerStats}
             activeTheme={displayTheme}
@@ -2135,20 +2477,17 @@ export default function App() {
         {/* VIEW 3: GAMEPLAY SCREEN */}
         {activeScreen === 'game' && (
           <>
-            {/* Top Header Section: Clean 8-10px breathing room from container sides */}
-            <header className="flex flex-col gap-2 w-full shrink-0 px-2 sm:px-2.5 pt-1">
+            {/* Top Header Section: Balanced & compact above the board */}
+            <header className="flex flex-col gap-2 w-full shrink-0 px-1 sm:px-1.5">
               {/* Top Bar: Home, Title, Settings */}
-              <div className="flex items-center justify-between w-full">
-                {/* Home Return Button (Top Left Corner: 10px margin from screen border, 4px from neighbors) */}
+              <div className="flex items-center justify-between gap-2 w-full">
+                {/* Home Return Button */}
                 <button
                   type="button"
                   aria-label="Return to Home"
                   onClick={() => setActiveScreen('home')}
                   style={{
-                    marginLeft: 10,
-                    marginTop: 10,
-                    marginRight: 4,
-                    marginBottom: 4,
+                    margin: 0,
                     backgroundColor: displayTheme.surfaceBg,
                     borderColor: displayTheme.surfaceBorder,
                   }}
@@ -2160,19 +2499,19 @@ export default function App() {
                   </svg>
                 </button>
 
-                <div className="flex flex-col items-center justify-center">
+                <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-[5px]">
                   <h1
                     style={{
                       color: displayTheme.titleTextColor,
                       filter: `drop-shadow(0 0 16px ${displayTheme.accentGlowRgba})`,
                     }}
-                    className="text-xl sm:text-2xl tracking-wider uppercase font-['Black_Ops_One',sans-serif] text-center px-2 select-none cursor-pointer flex items-center justify-center leading-none"
+                    className="text-lg sm:text-xl tracking-wider uppercase font-['Black_Ops_One',sans-serif] text-center px-1 select-none cursor-pointer flex items-center justify-center leading-none"
                     onClick={() => setActiveScreen('home')}
                     title="Main Menu"
                   >
                     CREATYXO
                   </h1>
-                  <span className="text-[8.5px] font-bold tracking-[0.18em] text-slate-400 font-['Orbitron',sans-serif] mt-1">
+                  <span className="text-[8px] font-bold tracking-[0.16em] text-slate-400 font-['Orbitron',sans-serif] leading-none truncate max-w-full">
                     {boardSize}×{boardSize} • {activeDifficulty.label} •{' '}
                     <span style={{ color: displayTheme.accentHex }}>
                       LV.{playerLevelInfo.level}
@@ -2180,17 +2519,14 @@ export default function App() {
                   </span>
                 </div>
 
-                {/* Settings Button (Top Right Corner: 10px margin from screen border, 4px from neighbors) */}
+                {/* Settings Button */}
                 <button
                   type="button"
                   aria-label="Settings, Sound & Music"
                   onClick={() => setIsAudioSettingsOpen(true)}
                   style={{
+                    margin: 0,
                     padding: 8,
-                    marginLeft: 4,
-                    marginRight: 10,
-                    marginTop: 10,
-                    marginBottom: 4,
                     backgroundColor: displayTheme.surfaceBg,
                     borderColor: displayTheme.surfaceBorder,
                   }}
@@ -2203,8 +2539,8 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Score Cards Row: 12px gap */}
-              <div className="grid grid-cols-2 gap-3 w-full">
+              {/* Score Cards Row */}
+              <div className="grid grid-cols-2 gap-2.5 w-full">
                 {/* Animated Score Card */}
                 <ScoreCard
                   score={score}
@@ -2218,17 +2554,17 @@ export default function App() {
                     backgroundColor: displayTheme.surfaceBg,
                     borderColor: displayTheme.surfaceBorder,
                   }}
-                  className="border rounded-2xl px-3.5 py-2 flex flex-col justify-center gap-0.5 shadow-sm min-h-[52px]"
+                  className="border rounded-2xl px-3 py-2 flex flex-col justify-center gap-[5px] shadow-sm min-h-[46px]"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
+                    <span className="text-[9px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-none">
                       BEST ({boardSize}×{boardSize})
                     </span>
-                    <span className="text-[9.5px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-normal">
+                    <span className="text-[9px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-none">
                       #{userRank}
                     </span>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums">
+                  <div className="text-base sm:text-lg font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-none tabular-nums">
                     {modeBestScore.toLocaleString()}
                   </div>
                 </div>
@@ -2251,24 +2587,27 @@ export default function App() {
                       ? `0 0 14px ${displayTheme.accentGlowRgba}`
                       : undefined,
                 }}
-                className="border rounded-xl px-3 py-1.5 flex flex-col gap-1 transition-all duration-200"
+                className="border rounded-xl px-3 py-1.5 flex flex-col gap-[5px] transition-all duration-200"
               >
-                <div className="flex items-center justify-between text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">COMBO METER</span>
+                <div className="flex items-center justify-between gap-2 text-[8px] font-black font-['Orbitron',sans-serif] tracking-wider leading-none">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-slate-400 shrink-0">COMBO METER</span>
                     <span
                       style={{ color: comboTierInfo.color }}
-                      className={combo >= 3 ? 'animate-pulse' : ''}
+                      className={`truncate ${combo >= 3 ? 'animate-pulse' : ''}`}
                     >
                       • {combo >= 5 ? `${comboTierInfo.label} ⚡` : comboTierInfo.label}
                     </span>
                   </div>
-                  <span style={{ color: combo >= 2 ? comboTierInfo.color : displayTheme.accentHex }}>
+                  <span
+                    style={{ color: combo >= 2 ? comboTierInfo.color : displayTheme.accentHex }}
+                    className="shrink-0"
+                  >
                     {combo > 0 ? `${combo}×` : '0×'} ({comboMultiplierValue.toFixed(1)}× PTS)
                   </span>
                 </div>
 
-                <div className="w-full h-1.5 rounded-full bg-[#11192a] overflow-hidden grid grid-cols-5 gap-1 p-[1px]">
+                <div className="w-full h-1.5 rounded-full bg-[#11192a] overflow-hidden grid grid-cols-5 gap-1.5 p-[1.5px]">
                   {[1, 2, 3, 4, 5].map((segment) => {
                     const isLit = combo >= segment;
                     return (
@@ -2305,7 +2644,7 @@ export default function App() {
             </header>
 
             {/* Center Playfield: Game Board + Block Spawning Tray */}
-            <div className="w-full flex-1 flex flex-col items-center justify-center gap-2.5 sm:gap-3.5 my-auto min-h-0 px-2">
+            <div className="w-full flex-1 flex flex-col items-center justify-center gap-3 sm:gap-4 my-auto min-h-0 px-1 py-1">
               {/* Game Board */}
               <section
                 aria-label="Game Board"
@@ -2314,8 +2653,7 @@ export default function App() {
                 <div
                   ref={boardRef}
                   style={{
-                    width: '100%',
-                    maxWidth: 304,
+                    width: 'min(100%, 304px, 40dvh)',
                     aspectRatio: '1 / 1',
                     backgroundColor: displayTheme.boardBg,
                     padding: 10,
@@ -2331,7 +2669,7 @@ export default function App() {
                   } ${comboFlareBurst ? 'animate-hypernova-board' : ''}`}
                 >
                   <div
-                    className={`grid ${boardSize >= 10 ? 'gap-1' : 'gap-1 sm:gap-1.5'} w-full h-full relative`}
+                    className={`grid ${boardSize >= 10 ? 'gap-[5px]' : 'gap-1.5'} w-full h-full relative`}
                     style={{
                       gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))`,
                       gridTemplateRows: `repeat(${boardSize}, minmax(0, 1fr))`,
@@ -2422,7 +2760,7 @@ export default function App() {
                   {flyingMessages.map((msg) => (
                     <div
                       key={msg.id}
-                      className="absolute left-1/2 top-1/2 pointer-events-none z-40 animate-flying-score flex flex-col items-center justify-center text-center select-none"
+                      className="absolute left-1/2 top-1/2 pointer-events-none z-40 animate-flying-score flex flex-col items-center justify-center text-center select-none gap-1.5"
                     >
                       <span
                         className="text-2xl sm:text-3xl font-black font-['Orbitron',sans-serif] tracking-wider leading-none"
@@ -2434,7 +2772,7 @@ export default function App() {
                         {msg.multiplier}x
                       </span>
                       <span
-                        className="text-xl sm:text-2xl font-black text-white font-['Orbitron',sans-serif] tracking-wide leading-tight tabular-nums mt-0.5"
+                        className="text-xl sm:text-2xl font-black text-white font-['Orbitron',sans-serif] tracking-wide leading-tight tabular-nums"
                         style={{
                           textShadow: '0 2px 5px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.85), 0 0 14px rgba(255,255,255,0.7)',
                         }}
@@ -2451,7 +2789,10 @@ export default function App() {
 
               {/* Block Spawn Area (Piece Tray) */}
               <section aria-label="Piece Tray" className="w-full flex items-center justify-center">
-                <div className="relative grid grid-cols-3 gap-3 w-full max-w-[304px]">
+                <div
+                  style={{ width: 'min(100%, 304px, 40dvh)' }}
+                  className="relative grid grid-cols-3 gap-2.5 sm:gap-3"
+                >
                   {tray.map((piece, slotIdx) => {
                     const isCurrentlyDragging = dragging?.trayIndex === slotIdx;
 
@@ -2484,24 +2825,21 @@ export default function App() {
               </section>
             </div>
 
-            {/* Bottom Navigation: Inset 10px from screen border with at least 4px separation between elements */}
+            {/* Bottom Navigation: Clean separation & zero bottom overflow */}
             <nav
               style={{ borderColor: displayTheme.surfaceBorder }}
-              className="w-full flex items-center justify-around border-t pt-2 pb-2 px-2 sm:px-4 shrink-0 gap-2 mb-2.5"
+              className="w-full flex items-center justify-around border-t pt-2.5 pb-1 px-2 sm:px-4 shrink-0 gap-3"
               aria-label="Navigation"
             >
-              {/* Play Tab (Bottom Left Corner: 10px margin from screen border) */}
+              {/* Play Tab */}
               <button
                 type="button"
                 onClick={() => setActiveScreen('game')}
                 style={{
-                  marginLeft: 10,
-                  marginBottom: 10,
-                  marginRight: 4,
-                  marginTop: 2,
+                  margin: 0,
                   color: displayTheme.accentHex,
                 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer hover:bg-white/5 transition-colors box-border"
+                className="flex-1 max-w-[88px] min-h-[44px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer hover:bg-white/5 transition-colors box-border"
               >
                 <div
                   style={{ backgroundColor: displayTheme.surfaceBg }}
@@ -2514,7 +2852,7 @@ export default function App() {
                     <rect x="14" y="14" width="7" height="7" rx="1.5" />
                   </svg>
                 </div>
-                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal text-center">
+                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none text-center">
                   PLAY
                 </span>
               </button>
@@ -2523,8 +2861,8 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => openLeaderboard('game')}
-                style={{ marginBottom: 10, marginLeft: 4, marginRight: 4, marginTop: 2 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-white cursor-pointer hover:bg-white/5 active:scale-95 transition-all box-border"
+                style={{ margin: 0 }}
+                className="flex-1 max-w-[88px] min-h-[44px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-white cursor-pointer hover:bg-white/5 active:scale-95 transition-all box-border"
                 title="View Leaderboard"
               >
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
@@ -2532,24 +2870,24 @@ export default function App() {
                     <path d="M5 19h3v-6H5v6zm6 0h3V5h-3v14zm6 0h3v-9h-3v9z" />
                   </svg>
                 </div>
-                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal text-center">
+                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none text-center">
                   RANK
                 </span>
               </button>
 
-              {/* Settings / Pause Tab (Bottom Right Corner: 10px margin from screen border) */}
+              {/* Settings / Pause Tab */}
               <button
                 type="button"
                 onClick={() => setIsPaused(true)}
-                style={{ marginRight: 10, marginBottom: 10, marginLeft: 4, marginTop: 2 }}
-                className="flex-1 max-w-[88px] min-h-[44px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer hover:bg-white/5 transition-colors box-border"
+                style={{ margin: 0 }}
+                className="flex-1 max-w-[88px] min-h-[44px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer hover:bg-white/5 transition-colors box-border"
               >
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
                   <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                     <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
                   </svg>
                 </div>
-                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal text-center">
+                <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none text-center">
                   SETTINGS
                 </span>
               </button>
@@ -2563,11 +2901,11 @@ export default function App() {
                     backgroundColor: displayTheme.cardBg,
                     borderColor: displayTheme.cardBorder,
                   }}
-                  className="w-full max-w-[340px] max-h-full overflow-y-auto border rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-3.5 custom-scrollbar"
+                  className="w-full max-w-[340px] max-h-full overflow-y-auto border rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 custom-scrollbar"
                 >
                   <div
                     style={{ borderColor: displayTheme.surfaceBorder }}
-                    className="flex items-center justify-between border-b pb-3 px-1"
+                    className="flex items-center justify-between gap-2 border-b pb-3 px-1"
                   >
                     <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider leading-normal">
                       GAME PAUSED
@@ -2586,11 +2924,11 @@ export default function App() {
                       backgroundColor: displayTheme.surfaceBg,
                       borderColor: displayTheme.surfaceBorder,
                     }}
-                    className="border rounded-xl p-3.5 flex flex-col gap-3 text-left"
+                    className="border rounded-xl p-3.5 flex flex-col gap-3.5 text-left"
                   >
                     {/* Music Loudness */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
                           <span style={{ color: displayTheme.accentHex }}>
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
@@ -2635,8 +2973,8 @@ export default function App() {
                     </div>
 
                     {/* Sound FX Loudness */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
                           <span style={{ color: displayTheme.accentHex }}>
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
@@ -2687,7 +3025,7 @@ export default function App() {
                     {/* Haptic Feedback Toggle */}
                     <div
                       style={{ borderColor: displayTheme.surfaceBorder }}
-                      className="flex items-center justify-between pt-2 border-t"
+                      className="flex items-center justify-between gap-2 pt-2.5 border-t"
                     >
                       <span className="text-[10px] font-bold text-slate-300 font-['Orbitron',sans-serif] flex items-center gap-1.5">
                         <span style={{ color: displayTheme.accentHex }}>
@@ -2714,12 +3052,12 @@ export default function App() {
                     {/* Switch Difficulty / Board Size */}
                     <div
                       style={{ borderColor: displayTheme.surfaceBorder }}
-                      className="pt-2 border-t"
+                      className="pt-2.5 border-t flex flex-col gap-2"
                     >
-                      <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider block mb-1.5">
+                      <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider block">
                         BOARD SIZE & DIFFICULTY
                       </span>
-                      <div className="grid grid-cols-4 gap-1.5 w-full">
+                      <div className="grid grid-cols-4 gap-2 w-full">
                         {DIFFICULTY_ORDER.map((modeId) => {
                           const cfg = DIFFICULTY_MODES[modeId];
                           const isSelected = difficultyMode === modeId;
@@ -2734,12 +3072,12 @@ export default function App() {
                                 borderColor: isSelected ? displayTheme.accentHex : '#222f4b',
                                 color: isSelected ? displayTheme.accentHex : '#94a3b8',
                               }}
-                              className="flex flex-col items-center justify-center py-1.5 px-1 rounded-lg border transition-all cursor-pointer"
+                              className="flex flex-col items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg border transition-all cursor-pointer"
                             >
-                              <span className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight">
+                              <span className="text-[10px] font-black font-['Orbitron',sans-serif] leading-none">
                                 {cfg.boardSize}×{cfg.boardSize}
                               </span>
-                              <span className="text-[7px] font-bold tracking-wider font-['Orbitron',sans-serif] mt-0.5 leading-none">
+                              <span className="text-[7px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none">
                                 {cfg.label}
                               </span>
                             </button>
@@ -2749,9 +3087,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Navigation Actions: 12px gap, at least 4px separation */}
+                  {/* Navigation Actions: >= 8px gaps */}
                   <div className="flex flex-col gap-2.5 pt-1">
-                    <div className="grid grid-cols-2 gap-2 w-full">
+                    <div className="grid grid-cols-2 gap-2.5 w-full">
                       <button
                         type="button"
                         onClick={() => {
@@ -2829,107 +3167,109 @@ export default function App() {
               </div>
             )}
 
-            {/* Ending Screen (Clean & Calm) */}
+            {/* Ending Screen (Clean, Scroll-safe & Calm) */}
             {isGameOver && (
-              <div className="absolute inset-0 bg-[#070a11]/95 backdrop-blur-md z-40 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn select-none">
-                {isNewRecord && score > 0 ? (
-                  <span className="px-4 py-1.5 rounded-full bg-[#f6c445]/20 text-[#f6c445] border border-[#f6c445]/40 text-[10px] font-bold tracking-widest uppercase mb-3 leading-normal flex items-center justify-center">
-                    NEW ALL-TIME RECORD
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-3 leading-normal flex items-center justify-center">
-                    SESSION COMPLETED • {formatDuration(sessionElapsedSec)}
-                  </span>
-                )}
-
-                <h2 className="text-3xl font-black text-white font-['Orbitron',sans-serif] tracking-wider mb-3 leading-tight flex items-center justify-center text-center">
-                  GAME OVER
-                </h2>
-
-                {/* Score Summary Box */}
-                <div
-                  style={{
-                    backgroundColor: displayTheme.surfaceBg,
-                    borderColor: displayTheme.surfaceBorder,
-                  }}
-                  className="w-full max-w-[320px] border rounded-2xl p-4 sm:p-6 shadow-xl mb-4"
-                >
-                  <div className="flex flex-col items-center justify-center text-center">
-                    <span className="text-[10px] font-bold text-slate-400 tracking-wider leading-normal">
-                      FINAL SCORE
+              <div className="absolute inset-0 bg-[#070a11]/95 backdrop-blur-md z-40 overflow-y-auto p-4 sm:p-6 flex flex-col items-center text-center animate-fadeIn select-none custom-scrollbar">
+                <div className="my-auto w-full max-w-[320px] flex flex-col items-center gap-3.5">
+                  {isNewRecord && score > 0 ? (
+                    <span className="px-4 py-1.5 rounded-full bg-[#f6c445]/20 text-[#f6c445] border border-[#f6c445]/40 text-[10px] font-bold tracking-widest uppercase leading-normal flex items-center justify-center">
+                      NEW ALL-TIME RECORD
                     </span>
-                    <span
-                      style={{ color: displayTheme.accentHex }}
-                      className="text-3xl font-black tracking-wide mt-2 font-['Orbitron',sans-serif] leading-tight tabular-nums"
-                    >
-                      {score.toLocaleString()}
+                  ) : (
+                    <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase leading-normal flex items-center justify-center">
+                      SESSION COMPLETED • {formatDuration(sessionElapsedSec)}
                     </span>
-                  </div>
+                  )}
 
-                  <div className="h-px bg-[#192338] my-3.5" />
+                  <h2 className="text-3xl font-black text-white font-['Orbitron',sans-serif] tracking-wider leading-tight flex items-center justify-center text-center">
+                    GAME OVER
+                  </h2>
 
-                  {/* Stats Grid: Best, Lines Cleared, Max Combo */}
-                  <div className="grid grid-cols-3 gap-2 text-center font-['Orbitron',sans-serif]">
-                    <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-slate-400 leading-normal">BEST</span>
-                      <span className="text-sm font-black text-[#f6c445] mt-1.5 leading-normal tabular-nums">
-                        {modeBestScore.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center border-x border-[#192338]">
-                      <span className="text-[9px] font-bold text-slate-400 leading-normal">LINES</span>
-                      <span className="text-sm font-black text-white mt-1.5 leading-normal tabular-nums">
-                        {totalLinesCleared}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-slate-400 leading-normal">COMBO</span>
-                      <span className="text-sm font-black text-[#f43f5e] mt-1.5 leading-normal tabular-nums">
-                        {maxCombo > 0 ? `${maxCombo}x` : '1x'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col gap-3 w-full max-w-[320px]">
-                  <button
-                    type="button"
-                    onClick={() => resetGame()}
+                  {/* Score Summary Box */}
+                  <div
                     style={{
-                      margin: 0,
-                      backgroundColor: displayTheme.primaryBtnBg,
-                      color: displayTheme.primaryBtnText,
-                      boxShadow: `0 0 20px ${displayTheme.accentGlowRgba}`,
+                      backgroundColor: displayTheme.surfaceBg,
+                      borderColor: displayTheme.surfaceBorder,
                     }}
-                    className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                    className="w-full border rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col gap-3.5"
                   >
-                    PLAY AGAIN
-                  </button>
+                    <div className="flex flex-col items-center justify-center text-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 tracking-wider leading-normal">
+                        FINAL SCORE
+                      </span>
+                      <span
+                        style={{ color: displayTheme.accentHex }}
+                        className="text-3xl font-black tracking-wide font-['Orbitron',sans-serif] leading-tight tabular-nums"
+                      >
+                        {score.toLocaleString()}
+                      </span>
+                    </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsGameOver(false);
-                      openLeaderboard('game');
-                    }}
-                    style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                    className="btn-creatyxo w-full rounded-xl bg-[#121828] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
-                  >
-                    LEADERBOARD
-                  </button>
+                    <div className="h-px bg-[#192338]" />
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsGameOver(false);
-                      setActiveScreen('home');
-                    }}
-                    style={{ margin: 0 }}
-                    className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
-                  >
-                    MAIN MENU
-                  </button>
+                    {/* Stats Grid: Best, Lines Cleared, Max Combo */}
+                    <div className="grid grid-cols-3 gap-2 text-center font-['Orbitron',sans-serif]">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <span className="text-[9px] font-bold text-slate-400 leading-normal">BEST</span>
+                        <span className="text-sm font-black text-[#f6c445] leading-normal tabular-nums">
+                          {modeBestScore.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center gap-1.5 border-x border-[#192338] px-1">
+                        <span className="text-[9px] font-bold text-slate-400 leading-normal">LINES</span>
+                        <span className="text-sm font-black text-white leading-normal tabular-nums">
+                          {totalLinesCleared}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <span className="text-[9px] font-bold text-slate-400 leading-normal">COMBO</span>
+                        <span className="text-sm font-black text-[#f43f5e] leading-normal tabular-nums">
+                          {maxCombo > 0 ? `${maxCombo}x` : '1x'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-3 w-full">
+                    <button
+                      type="button"
+                      onClick={() => resetGame()}
+                      style={{
+                        margin: 0,
+                        backgroundColor: displayTheme.primaryBtnBg,
+                        color: displayTheme.primaryBtnText,
+                        boxShadow: `0 0 20px ${displayTheme.accentGlowRgba}`,
+                      }}
+                      className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                    >
+                      PLAY AGAIN
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGameOver(false);
+                        openLeaderboard('game');
+                      }}
+                      style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
+                      className="btn-creatyxo w-full rounded-xl bg-[#121828] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                    >
+                      LEADERBOARD
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGameOver(false);
+                        setActiveScreen('home');
+                      }}
+                      style={{ margin: 0 }}
+                      className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                    >
+                      MAIN MENU
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

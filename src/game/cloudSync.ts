@@ -401,6 +401,7 @@ export async function syncAccountWithCloud(
     dailyStreak: merged.stats.dailyStreak,
     achievementsCount: merged.stats.unlockedAchievements.length,
     activeTheme: merged.activeThemeId,
+    modeBestScores: merged.modeBestScores,
   });
 
   const synced = userSaved && lbSaved;

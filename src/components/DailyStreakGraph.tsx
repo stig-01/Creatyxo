@@ -187,7 +187,7 @@ export const DailyStreakGraph: React.FC<DailyStreakGraphProps> = ({
         </svg>
 
         {/* Clean Day Labels */}
-        <div className="grid grid-cols-7 gap-0.5 mt-1">
+        <div className="grid grid-cols-7 gap-1.5 mt-1.5">
           {days.map((pt, idx) => (
             <button
               key={`lbl-${pt.dateKey}`}
@@ -203,7 +203,7 @@ export const DailyStreakGraph: React.FC<DailyStreakGraphProps> = ({
                   ? '#cbd5e1'
                   : '#64748b',
               }}
-              className="text-[7.5px] font-black font-['Orbitron',sans-serif] py-0.5 rounded hover:bg-white/5 cursor-pointer"
+              className="text-[7.5px] font-black font-['Orbitron',sans-serif] py-1 rounded hover:bg-white/5 cursor-pointer"
             >
               {pt.isToday ? 'NOW' : pt.dayShort.slice(0, 1)}
             </button>
@@ -212,7 +212,7 @@ export const DailyStreakGraph: React.FC<DailyStreakGraphProps> = ({
       </div>
 
       {/* Single Quiet Footer Line */}
-      <div className="flex items-center justify-between text-[8px] font-bold text-slate-400 font-['Orbitron',sans-serif] pt-1 border-t border-white/5">
+      <div className="flex items-center justify-between gap-2 text-[8px] font-bold text-slate-400 font-['Orbitron',sans-serif] pt-2 mt-1 border-t border-white/5">
         <span>
           {activeDay.isToday
             ? 'TODAY'

@@ -4,6 +4,8 @@
  */
 
 import React, { useMemo } from 'react';
+import { DifficultyModeId } from '../game/types';
+import { DIFFICULTY_MODES, DIFFICULTY_ORDER } from '../game/shapes';
 import { LeaderboardEntry, getTierBadgeStyle } from '../game/leaderboard';
 import { FriendshipRecord } from '../game/friends';
 import {
@@ -106,10 +108,18 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   );
   const tierStyle = getTierBadgeStyle(entry.tier);
 
+  const perGridScores: Record<DifficultyModeId, number> = {
+    easy: entry.modeBestScores?.easy ?? 0,
+    classic: entry.modeBestScores?.classic ?? (entry.modeBestScores ? 0 : entry.score),
+    hard: entry.modeBestScores?.hard ?? (isSelf ? playerStats?.hardBestScore ?? 0 : 0),
+    extreme: entry.modeBestScores?.extreme ?? (isSelf ? playerStats?.extremeBestScore ?? 0 : 0),
+  };
+  const overallAllTimeRecord = Math.max(entry.score, ...Object.values(perGridScores));
+
   const statItems = [
     {
       label: 'ALL-TIME RECORD',
-      value: entry.score.toLocaleString(),
+      value: overallAllTimeRecord.toLocaleString(),
       color: '#f6c445',
     },
     {
@@ -189,13 +199,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               borderColor={activeTheme.accentHex}
             />
 
-            <div className="flex flex-col min-w-0 gap-1">
+            <div className="flex flex-col min-w-0 gap-1.5">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-sm font-black text-white font-['Orbitron',sans-serif] truncate">
+                <span className="text-sm font-black text-white font-['Orbitron',sans-serif] truncate leading-none">
                   {entry.username}
                 </span>
                 {entry.tag && (
-                  <span className="text-[10px] text-slate-400 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono leading-none">
                     #{entry.tag}
                   </span>
                 )}
@@ -267,8 +277,44 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         </div>
 
         {/* Statistics Grid */}
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar space-y-2">
+          {/* Per-Grid Records */}
+          <div
+            style={{
+              backgroundColor: '#0d1322',
+              borderColor: activeTheme.surfaceBorder,
+            }}
+            className="rounded-xl border p-3 flex flex-col gap-2"
+          >
+            <span className="text-[8px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-none">
+              PER-GRID RECORDS
+            </span>
+            <div className="grid grid-cols-4 gap-2">
+              {DIFFICULTY_ORDER.map((modeId) => {
+                const cfg = DIFFICULTY_MODES[modeId];
+                const val = perGridScores[modeId] || 0;
+                return (
+                  <div
+                    key={modeId}
+                    style={{ borderColor: activeTheme.surfaceBorder }}
+                    className="rounded-lg bg-[#11192d] border px-1.5 py-2 flex flex-col items-center text-center gap-1.5"
+                  >
+                    <span className="text-[8px] font-bold text-slate-400 font-['Orbitron',sans-serif] leading-none">
+                      {cfg.boardSize}×{cfg.boardSize}
+                    </span>
+                    <span
+                      style={{ color: val > 0 ? activeTheme.accentHex : '#64748b' }}
+                      className="text-[10.5px] font-black font-['Orbitron',sans-serif] tabular-nums leading-none"
+                    >
+                      {val > 0 ? val.toLocaleString() : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
             {statItems.map((item) => (
               <div
                 key={item.label}
@@ -276,14 +322,14 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                   backgroundColor: '#0d1322',
                   borderColor: activeTheme.surfaceBorder,
                 }}
-                className="rounded-xl border p-2.5 flex flex-col justify-center gap-1"
+                className="rounded-xl border p-2.5 flex flex-col justify-center gap-1.5"
               >
-                <span className="text-[8.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider">
+                <span className="text-[8.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-none">
                   {item.label}
                 </span>
                 <span
                   style={{ color: item.color }}
-                  className="text-sm font-black font-['Orbitron',sans-serif] tabular-nums"
+                  className="text-sm font-black font-['Orbitron',sans-serif] tabular-nums leading-none"
                 >
                   {item.value}
                 </span>
@@ -302,15 +348,15 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               }}
               className="rounded-xl border px-3 py-2 flex items-center justify-between gap-2"
             >
-              <div className="flex flex-col text-left min-w-0">
-                <span className="text-[8.5px] font-black font-['Orbitron',sans-serif] text-white tracking-wider">
+              <div className="flex flex-col text-left min-w-0 gap-1.5">
+                <span className="text-[8.5px] font-black font-['Orbitron',sans-serif] text-white tracking-wider leading-none">
                   {isSignedIn
                     ? hasPendingSync
                       ? 'CLOUD ACCOUNT • SYNC PENDING'
                       : 'CLOUD ACCOUNT • SYNCED'
                     : 'LOCAL GUEST PROGRESS'}
                 </span>
-                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate">
+                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate leading-none">
                   {isSignedIn
                     ? authEmail || 'Synced across devices'
                     : 'Sign in with Google to carry progress'}

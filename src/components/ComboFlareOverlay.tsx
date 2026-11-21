@@ -103,9 +103,9 @@ export const ComboFlareOverlay: React.FC<ComboFlareOverlayProps> = ({ burst }) =
         />
       ))}
 
-      {/* Crisp Level-Up / Hypernova Surge Crest along top edge of the board */}
+      {/* Crisp Level-Up / Hypernova Surge Crest inside top edge of board to avoid colliding with Combo Meter */}
       <div
-        className="absolute left-1/2 -top-3 animate-combo-levelup flex items-center gap-1.5 px-3.5 py-1 rounded-full border backdrop-blur-sm whitespace-nowrap"
+        className="absolute left-1/2 top-2 animate-combo-levelup flex items-center gap-1.5 px-3.5 py-1 rounded-full border backdrop-blur-sm whitespace-nowrap"
         style={{
           backgroundColor: 'rgba(13, 18, 32, 0.92)',
           borderColor: '#f43f5e',

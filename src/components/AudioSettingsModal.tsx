@@ -85,9 +85,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         {/* Header */}
         <div
           style={{ borderColor: activeTheme.surfaceBorder }}
-          className="flex items-center justify-between border-b pb-3"
+          className="flex items-center justify-between gap-2.5 border-b pb-3"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
               style={{
                 backgroundColor: activeTheme.surfaceBg,
@@ -100,11 +100,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
               </svg>
             </div>
-            <div>
-              <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider leading-none">
                 AUDIO & HAPTICS
               </h2>
-              <p className="text-[10px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide mt-1">
+              <p className="text-[10px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide leading-snug">
                 MUSIC, SOUND & MOBILE VIBRATION
               </p>
             </div>
@@ -247,11 +247,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <path d="M0 15h2V9H0v6zm3 2h2V7H3v10zm19-8v6h2V9h-2zm-3 8h2V7h-2v10zM16.5 3h-9C6.67 3 6 3.67 6 4.5v15c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5v-15c0-.83-.67-1.5-1.5-1.5zM16 19H8V5h8v14z" />
               </svg>
             </span>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-bold text-slate-200 font-['Orbitron',sans-serif] tracking-wide">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="text-xs font-bold text-slate-200 font-['Orbitron',sans-serif] tracking-wide leading-none">
                 HAPTIC FEEDBACK
               </span>
-              <span className="text-[9px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide mt-0.5">
+              <span className="text-[9px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide leading-snug">
                 MOBILE VIBRATION ON MOVES
               </span>
             </div>

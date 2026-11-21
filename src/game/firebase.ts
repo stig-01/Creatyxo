@@ -180,6 +180,7 @@ export interface FirestoreLeaderboardRecord {
   dailyStreak?: number;
   achievementsCount?: number;
   activeTheme?: string;
+  modeBestScores?: Record<DifficultyModeId, number>;
 }
 
 export interface UserAccountRecord {
@@ -469,6 +470,16 @@ export async function savePlayerRecordToFirestore(
     const scoreCeiling = 2500 + totalLinesCleared * 10000;
     const safeScore = hasActivity ? Math.min(clampNonNeg(record.score, 250000), scoreCeiling) : 0;
 
+    const rawModes = record.modeBestScores;
+    const modeBestScores: Record<DifficultyModeId, number> | undefined = rawModes
+      ? {
+          easy: Math.min(clampNonNeg(rawModes.easy, 250000), safeScore),
+          classic: Math.min(clampNonNeg(rawModes.classic, 250000), safeScore),
+          hard: Math.min(clampNonNeg(rawModes.hard, 250000), safeScore),
+          extreme: Math.min(clampNonNeg(rawModes.extreme, 250000), safeScore),
+        }
+      : undefined;
+
     const payload: Record<string, unknown> = {
       id: record.id,
       username: (record.username.trim() || 'Player').slice(0, 30),
@@ -488,6 +499,7 @@ export async function savePlayerRecordToFirestore(
       dailyStreak: Math.max(1, clampNonNeg(record.dailyStreak ?? 1, 3650, 1)),
       achievementsCount: clampNonNeg(record.achievementsCount ?? 0, 16),
       activeTheme: record.activeTheme ? record.activeTheme.slice(0, 32) : null,
+      ...(modeBestScores ? { modeBestScores } : {}),
     };
 
     await setDoc(docRef, payload, { merge: true });
@@ -531,21 +543,32 @@ function mapDocToRecord(docId: string, data: Record<string, unknown>): Firestore
     achievementsCount:
       typeof data.achievementsCount === 'number' ? data.achievementsCount : undefined,
     activeTheme: typeof data.activeTheme === 'string' ? data.activeTheme : undefined,
+    modeBestScores:
+      data.modeBestScores && typeof data.modeBestScores === 'object'
+        ? {
+            easy: clampNonNeg((data.modeBestScores as Record<string, unknown>).easy, 250000),
+            classic: clampNonNeg((data.modeBestScores as Record<string, unknown>).classic, 250000),
+            hard: clampNonNeg((data.modeBestScores as Record<string, unknown>).hard, 250000),
+            extreme: clampNonNeg((data.modeBestScores as Record<string, unknown>).extreme, 250000),
+          }
+        : undefined,
   };
 }
 
 /**
- * Fetches the top shared records from Firestore (bounded query <= 100)
+ * Fetches the top shared records from Firestore (bounded query <= 100), optionally ordered by a specific grid mode
  */
 export async function getLeaderboardRecordsFromFirestore(
-  limitCount = 50
+  limitCount = 50,
+  mode?: DifficultyModeId
 ): Promise<FirestoreLeaderboardRecord[]> {
   if (!db) return [];
   const boundedLimit = Math.min(100, Math.max(1, Math.floor(limitCount)));
+  const orderField = mode ? `modeBestScores.${mode}` : 'score';
   try {
     const q = query(
       collection(db, 'leaderboard'),
-      orderBy('score', 'desc'),
+      orderBy(orderField, 'desc'),
       limit(boundedLimit)
     );
     const snap = await getDocs(q);
@@ -557,6 +580,9 @@ export async function getLeaderboardRecordsFromFirestore(
     });
     return records;
   } catch (err) {
+    if (mode && err instanceof Error && err.message.toLowerCase().includes('index')) {
+      return getLeaderboardRecordsFromFirestore(limitCount);
+    }
     handleFirestoreError(err, OperationType.LIST, 'leaderboard');
     return [];
   }
@@ -567,17 +593,22 @@ export async function getLeaderboardRecordsFromFirestore(
  */
 export function subscribeToLeaderboardUpdates(
   onUpdate: (records: FirestoreLeaderboardRecord[]) => void,
-  limitCount = 50
+  limitCount = 50,
+  mode?: DifficultyModeId
 ): Unsubscribe {
   if (!db) return () => {};
   const boundedLimit = Math.min(100, Math.max(1, Math.floor(limitCount)));
-  try {
+  const orderField = mode ? `modeBestScores.${mode}` : 'score';
+  let activeUnsub: Unsubscribe = () => {};
+  let fallbackTriggered = false;
+
+  const attach = (field: string) => {
     const q = query(
-      collection(db, 'leaderboard'),
-      orderBy('score', 'desc'),
+      collection(db!, 'leaderboard'),
+      orderBy(field, 'desc'),
       limit(boundedLimit)
     );
-    return onSnapshot(
+    activeUnsub = onSnapshot(
       q,
       (snap) => {
         isDbOnline = true;
@@ -589,9 +620,21 @@ export function subscribeToLeaderboardUpdates(
         onUpdate(records);
       },
       (error) => {
+        if (field !== 'score' && !fallbackTriggered && error.message.toLowerCase().includes('index')) {
+          fallbackTriggered = true;
+          attach('score');
+          return;
+        }
         handleFirestoreError(error, OperationType.LIST, 'leaderboard');
       }
     );
+  };
+
+  try {
+    attach(orderField);
+    return () => {
+      activeUnsub();
+    };
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'leaderboard');
     return () => {};

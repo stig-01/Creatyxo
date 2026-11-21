@@ -78,18 +78,18 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, combo, activeTheme 
         borderColor: isAnimating ? activeTheme.accentHex : activeTheme.surfaceBorder,
         boxShadow: isAnimating ? `0 0 14px ${activeTheme.accentGlowRgba}` : undefined,
       }}
-      className="border rounded-2xl px-3.5 py-2 flex flex-col justify-center gap-0.5 shadow-sm min-h-[52px] transition-all duration-200"
+      className="border rounded-2xl px-3 py-2 flex flex-col justify-center gap-[5px] shadow-sm min-h-[46px] transition-all duration-200"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
+        <span className="text-[9px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-none">
           SCORE
         </span>
         {combo > 1 ? (
-          <span className="text-[8px] font-bold text-[#f43f5e] bg-[#2d1523] border border-[#4d1f35] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-normal">
+          <span className="text-[8px] font-bold text-[#f43f5e] bg-[#2d1523] border border-[#4d1f35] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-none">
             {combo}×
           </span>
         ) : (
-          <span className="text-[8px] font-bold text-slate-500 bg-[#141b2e] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-normal">
+          <span className="text-[8px] font-bold text-slate-500 bg-[#141b2e] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-none">
             1×
           </span>
         )}
@@ -99,7 +99,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, combo, activeTheme 
           color: isAnimating ? activeTheme.accentHex : '#ffffff',
           textShadow: isAnimating ? `0 0 12px ${activeTheme.accentGlowRgba}` : undefined,
         }}
-        className={`text-lg sm:text-xl font-black tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums origin-left transition-transform duration-150 ${
+        className={`text-base sm:text-lg font-black tracking-wide font-['Orbitron',sans-serif] leading-none tabular-nums origin-left transition-transform duration-150 ${
           isAnimating ? 'scale-[1.06]' : 'scale-100'
         }`}
       >

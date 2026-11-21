@@ -227,7 +227,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
             </span>
           )}
 
-          <span className="text-[10px] text-slate-500 font-['Orbitron',sans-serif] mt-0.5">
+          <span className="text-[10px] text-slate-500 font-['Orbitron',sans-serif] mt-1.5 leading-snug">
             {tag
               ? 'Random name roll includes a number tag.'
               : 'Custom names have no number tag.'}

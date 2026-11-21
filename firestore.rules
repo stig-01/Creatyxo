@@ -55,6 +55,16 @@ service cloud.firestore {
         && xp < 100 * level * (level + 1);
     }
 
+    function isValidModeBestScores(scores, maxOverall) {
+      return scores is map
+        && scores.keys().hasAll(['easy', 'classic', 'hard', 'extreme'])
+        && scores.keys().hasOnly(['easy', 'classic', 'hard', 'extreme'])
+        && scores.easy is number && scores.easy >= 0 && scores.easy <= 250000 && scores.easy <= maxOverall
+        && scores.classic is number && scores.classic >= 0 && scores.classic <= 250000 && scores.classic <= maxOverall
+        && scores.hard is number && scores.hard >= 0 && scores.hard <= 250000 && scores.hard <= maxOverall
+        && scores.extreme is number && scores.extreme >= 0 && scores.extreme <= 250000 && scores.extreme <= maxOverall;
+    }
+
     function isValidUserAccount(data, userId) {
       return data.keys().hasAll([
           'uid', 'profile', 'stats', 'modeBestScores', 'bestScore',
@@ -99,14 +109,8 @@ service cloud.firestore {
         && data.stats.achievementUnlockedAt is map
         && data.stats.dailyProgress is map
         && (!('unlockedBlockSkins' in data.stats) || (data.stats.unlockedBlockSkins is list && data.stats.unlockedBlockSkins.size() <= 10))
-        && data.modeBestScores is map
-        && data.modeBestScores.keys().hasAll(['easy', 'classic', 'hard', 'extreme'])
-        && data.modeBestScores.keys().hasOnly(['easy', 'classic', 'hard', 'extreme'])
-        && data.modeBestScores.easy is number && data.modeBestScores.easy >= 0 && data.modeBestScores.easy <= 250000
-        && data.modeBestScores.classic is number && data.modeBestScores.classic >= 0 && data.modeBestScores.classic <= 250000
-        && data.modeBestScores.hard is number && data.modeBestScores.hard >= 0 && data.modeBestScores.hard <= 250000
-        && data.modeBestScores.extreme is number && data.modeBestScores.extreme >= 0 && data.modeBestScores.extreme <= 250000
         && data.bestScore is number && data.bestScore >= 0 && data.bestScore <= 250000
+        && isValidModeBestScores(data.modeBestScores, data.bestScore)
         && (data.bestScore == 0 || ((data.stats.gamesPlayed >= 1 || data.stats.totalLinesCleared >= 1 || data.stats.totalPlaytimeSec >= 5) && data.bestScore <= 2500 + data.stats.totalLinesCleared * 10000))
         && data.activeThemeId is string && data.activeThemeId.size() > 0 && data.activeThemeId.size() <= 32
         && data.activeBlockSkinId is string && data.activeBlockSkinId.size() > 0 && data.activeBlockSkinId.size() <= 32
@@ -123,7 +127,8 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'id', 'username', 'tag', 'score', 'avatarLetter', 'avatarUrl', 'tier', 'updatedAt',
           'xp', 'level', 'totalPlaytimeSec', 'longestSessionSec', 'gamesPlayed',
-          'totalLinesCleared', 'bestCombo', 'dailyStreak', 'achievementsCount', 'activeTheme'
+          'totalLinesCleared', 'bestCombo', 'dailyStreak', 'achievementsCount', 'activeTheme',
+          'modeBestScores'
         ])
         && data.id is string
         && data.id == playerId
@@ -135,6 +140,7 @@ service cloud.firestore {
         && data.score >= 0
         && data.score <= 250000
         && (data.score == 0 || ((data.gamesPlayed >= 1 || data.totalLinesCleared >= 1 || data.totalPlaytimeSec >= 5) && data.score <= 2500 + data.totalLinesCleared * 10000))
+        && (!('modeBestScores' in data) || isValidModeBestScores(data.modeBestScores, data.score))
         && data.avatarLetter is string
         && data.avatarLetter.size() >= 1
         && data.avatarLetter.size() <= 2
@@ -230,6 +236,16 @@ service cloud.firestore {
         && incoming().totalPlaytimeSec >= existing().totalPlaytimeSec
         && incoming().bestCombo >= existing().bestCombo
         && incoming().achievementsCount >= existing().achievementsCount
+        && (
+          !('modeBestScores' in existing())
+          || !('modeBestScores' in incoming())
+          || (
+            incoming().modeBestScores.easy >= existing().modeBestScores.easy
+            && incoming().modeBestScores.classic >= existing().modeBestScores.classic
+            && incoming().modeBestScores.hard >= existing().modeBestScores.hard
+            && incoming().modeBestScores.extreme >= existing().modeBestScores.extreme
+          )
+        )
         && (
           !(existing().updatedAt is timestamp)
           || (incoming().totalPlaytimeSec - existing().totalPlaytimeSec) <= ((request.time.toMillis() - existing().updatedAt.toMillis()) / 1000) + 120

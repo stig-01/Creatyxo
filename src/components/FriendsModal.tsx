@@ -114,13 +114,13 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
         {/* Header */}
         <div
           style={{ borderColor: activeTheme.surfaceBorder }}
-          className="flex items-center justify-between border-b pb-3 shrink-0"
+          className="flex items-center justify-between gap-2.5 border-b pb-3 shrink-0"
         >
-          <div className="min-w-0">
-            <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider">
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider leading-none">
               FRIENDS & REQUESTS
             </h2>
-            <p className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] mt-0.5">
+            <p className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] leading-snug">
               {isSignedIn
                 ? `${accepted.length} ${accepted.length === 1 ? 'FRIEND' : 'FRIENDS'} • ${incomingPending.length} INCOMING`
                 : 'SIGN IN TO SYNC FRIENDS ACROSS DEVICES'}
@@ -163,7 +163,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
         ) : (
           <>
         {/* Tab Switcher */}
-        <div className="grid grid-cols-3 gap-1.5 shrink-0">
+        <div className="grid grid-cols-3 gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setTab('friends')}
@@ -186,11 +186,11 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
               borderColor: tab === 'requests' ? activeTheme.accentHex : activeTheme.surfaceBorder,
               color: tab === 'requests' ? activeTheme.accentHex : '#94a3b8',
             }}
-            className="relative py-2 px-2 rounded-xl border text-[9.5px] font-black font-['Orbitron',sans-serif] tracking-wider cursor-pointer transition-all"
+            className="py-2 px-2 rounded-xl border text-[9.5px] font-black font-['Orbitron',sans-serif] tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
           >
-            REQUESTS ({totalRequests})
+            <span className="truncate">REQUESTS ({totalRequests})</span>
             {incomingPending.length > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-400 absolute top-1 right-1 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0 animate-pulse" />
             )}
           </button>
           <button
@@ -274,9 +274,9 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                           bgColor={activeTheme.boardBg}
                           borderColor={activeTheme.surfaceBorder}
                         />
-                        <div className="flex flex-col min-w-0 text-left">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate">
+                        <div className="flex flex-col min-w-0 text-left gap-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate leading-none">
                               {displayName}
                             </span>
                             <span
@@ -286,7 +286,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                               LV.{level}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className="flex items-center gap-2">
                             <span
                               className={`text-[7.5px] font-bold px-1.5 py-0.5 rounded-full border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border} font-['Orbitron',sans-serif]`}
                             >
@@ -360,11 +360,11 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                           bgColor={activeTheme.boardBg}
                           borderColor={activeTheme.surfaceBorder}
                         />
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate">
+                        <div className="flex flex-col min-w-0 gap-1.5">
+                          <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate leading-none">
                             {senderName}
                           </span>
-                          <span className="text-[8.5px] text-slate-400 font-['Orbitron',sans-serif]">
+                          <span className="text-[8.5px] text-slate-400 font-['Orbitron',sans-serif] leading-none">
                             LV.{entry?.level ?? 1} • WANTS TO BE FRIENDS
                           </span>
                         </div>
@@ -426,11 +426,11 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                           bgColor={activeTheme.boardBg}
                           borderColor={activeTheme.surfaceBorder}
                         />
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-slate-200 font-['Orbitron',sans-serif] truncate">
+                        <div className="flex flex-col min-w-0 gap-1.5">
+                          <span className="text-xs font-bold text-slate-200 font-['Orbitron',sans-serif] truncate leading-none">
                             {targetName}
                           </span>
-                          <span className="text-[8.5px] text-amber-300 font-['Orbitron',sans-serif]">
+                          <span className="text-[8.5px] text-amber-300 font-['Orbitron',sans-serif] leading-none">
                             AWAITING ACCEPTANCE
                           </span>
                         </div>
@@ -508,19 +508,19 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                           bgColor={activeTheme.boardBg}
                           borderColor={activeTheme.surfaceBorder}
                         />
-                        <div className="flex flex-col min-w-0 text-left">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate">
+                        <div className="flex flex-col min-w-0 text-left gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] truncate leading-none">
                               {player.username}
                             </span>
                             <span
                               style={{ color: activeTheme.accentHex }}
-                              className="text-[8px] font-black font-['Orbitron',sans-serif]"
+                              className="text-[8px] font-black font-['Orbitron',sans-serif] leading-none shrink-0"
                             >
                               LV.{player.level ?? 1}
                             </span>
                           </div>
-                          <span className="text-[9px] text-slate-400 font-['Orbitron',sans-serif]">
+                          <span className="text-[9px] text-slate-400 font-['Orbitron',sans-serif] leading-none">
                             BEST: {player.score.toLocaleString()}
                           </span>
                         </div>

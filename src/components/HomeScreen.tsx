@@ -71,52 +71,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const levelInfo = getLevelInfo(playerStats.xp);
 
   return (
-    <div className="w-full h-full flex flex-col justify-between items-center text-center select-none animate-fadeIn px-2 sm:px-2.5">
-      {/* Top Header Bar: Corner buttons have explicit 10px margins from screen border and >=4px from neighbors */}
-      <header className="w-full flex items-center justify-between pt-1 shrink-0">
+    <div className="w-full h-full flex flex-col justify-between items-center text-center select-none animate-fadeIn gap-2.5 overflow-hidden">
+      {/* Top Header Bar: Balanced inset & guaranteed >= 8px separation */}
+      <header className="w-full flex items-center justify-between gap-2.5 px-1 pt-0.5 shrink-0">
         {/* Player Profile Chip -> Opens full player profile & stats */}
         <button
           type="button"
           onClick={onOpenMyProfile}
           style={{
-            marginLeft: 10,
-            marginTop: 10,
-            marginRight: 4,
-            marginBottom: 4,
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
-          className="btn-creatyxo rounded-xl border transition-all cursor-pointer group active:scale-95 shadow-sm gap-2 max-w-[70%]"
+          className="btn-creatyxo rounded-xl border transition-all cursor-pointer group active:scale-95 shadow-sm gap-2.5 flex-1 min-w-0 justify-start px-2.5 py-2"
           title="View Player Profile & Stats"
         >
           <PlayerAvatar
             letter={initial}
             avatarUrl={playerProfile.avatarUrl}
-            sizeClass="w-7 h-7"
+            sizeClass="w-8 h-8"
             textClass="text-xs"
             accentColor={activeTheme.accentHex}
             bgColor={activeTheme.boardBg}
             borderColor={activeTheme.surfaceBorder}
           />
 
-          <div className="flex flex-col text-left justify-center min-w-0 pr-1 gap-0.5">
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] transition-colors truncate leading-normal">
+          <div className="flex flex-col text-left justify-center min-w-0 flex-1 gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs font-bold text-white font-['Orbitron',sans-serif] transition-colors truncate leading-none">
                 {playerProfile.username}
               </span>
               {playerProfile.tag && (
-                <span className="text-[9.5px] text-slate-500 font-mono shrink-0">
+                <span className="text-[9.5px] text-slate-400 font-mono shrink-0 leading-none">
                   #{playerProfile.tag}
                 </span>
               )}
               <span
                 style={{ color: activeTheme.accentHex }}
-                className="text-[8px] font-black px-1.5 py-0.5 rounded bg-[#121d33] border border-[#233554] font-['Orbitron',sans-serif] shrink-0"
+                className="text-[8px] font-black px-1.5 py-0.5 rounded bg-[#121d33] border border-[#233554] font-['Orbitron',sans-serif] shrink-0 leading-none"
               >
                 LV.{levelInfo.level}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               <span
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   isSignedIn
@@ -126,7 +122,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     : 'bg-slate-500'
                 }`}
               />
-              <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal truncate">
+              <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-none truncate">
                 {isSignedIn
                   ? hasPendingSync
                     ? 'OFFLINE QUEUED'
@@ -138,20 +134,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
 
         {/* Settings & Name Edit Buttons (Top Right Corner) */}
-        <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onOpenNameModal}
             style={{
-              padding: 8,
-              marginLeft: 4,
-              marginRight: 4,
-              marginTop: 10,
-              marginBottom: 4,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
             aria-label="Edit player name and profile picture"
             title="Edit Name & PFP"
           >
@@ -164,15 +155,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             type="button"
             onClick={onOpenAudioSettings}
             style={{
-              padding: 8,
-              marginLeft: 4,
-              marginRight: 10,
-              marginTop: 10,
-              marginBottom: 4,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
             aria-label="Settings, Sound & Music"
             title="Settings (Music & Sound)"
           >
@@ -183,20 +169,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       </header>
 
-      {/* Central Branding with balanced spatial margins */}
-      <div className="w-full flex flex-col items-center gap-2.5 my-auto py-1 px-2">
+      {/* Central Branding & Hub (scroll-safe on compact viewports so nothing collides) */}
+      <div className="w-full flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col items-center justify-evenly gap-3 py-1 px-1">
         {/* Title */}
-        <div className="flex flex-col items-center gap-0.5">
+        <div className="flex flex-col items-center gap-1.5 shrink-0">
           <h1
             style={{
               color: activeTheme.titleTextColor,
               filter: `drop-shadow(0 0 18px ${activeTheme.accentGlowRgba})`,
             }}
-            className="text-4xl sm:text-5xl font-black font-['Black_Ops_One',sans-serif] tracking-wider leading-tight text-center"
+            className="text-3xl sm:text-4xl font-black font-['Black_Ops_One',sans-serif] tracking-wider leading-none text-center"
           >
             CREATYXO
           </h1>
-          <p className="text-[10px] font-bold tracking-[0.28em] text-slate-400 font-['Orbitron',sans-serif] uppercase leading-normal text-center">
+          <p className="text-[9.5px] font-bold tracking-[0.26em] text-slate-400 font-['Orbitron',sans-serif] uppercase leading-normal text-center">
             BLOCK PUZZLE
           </p>
         </div>
@@ -207,28 +193,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
-          className="w-full max-w-[330px] sm:max-w-[350px] border rounded-2xl px-4 py-2.5 flex flex-col gap-2 shadow-sm"
+          className="w-full max-w-[350px] border rounded-2xl px-3.5 py-2.5 flex flex-col gap-2 shadow-sm shrink-0"
         >
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col text-left justify-center gap-0.5">
-              <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col text-left justify-center gap-[5px] min-w-0">
+              <span className="text-[8.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-none">
                 {activeModeConfig.boardSize}×{activeModeConfig.boardSize} BEST
               </span>
-              <span className="text-xl font-black text-[#f6c445] font-['Orbitron',sans-serif] leading-normal tabular-nums">
+              <span className="text-lg font-black text-[#f6c445] font-['Orbitron',sans-serif] leading-none tabular-nums">
                 {modeBestScore.toLocaleString()}
               </span>
             </div>
 
-            <div className="flex flex-col items-end justify-center gap-0.5">
-              <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
+            <div className="flex flex-col items-end justify-center gap-[5px] shrink-0">
+              <span className="text-[8.5px] font-bold text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-none">
                 GLOBAL RANK
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-white font-['Orbitron',sans-serif] leading-normal">
+                <span className="text-xs font-black text-white font-['Orbitron',sans-serif] leading-none tabular-nums">
                   #{userRank}
                 </span>
                 <span
-                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border} font-['Orbitron',sans-serif] leading-normal`}
+                  className={`text-[8.5px] font-bold px-2 py-0.5 rounded-full border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border} font-['Orbitron',sans-serif] leading-none`}
                 >
                   {tier}
                 </span>
@@ -237,12 +223,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           {/* Mini XP Progress Bar */}
-          <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
-            <div className="flex items-center justify-between text-[8.5px] font-bold font-['Orbitron',sans-serif]">
-              <span style={{ color: activeTheme.accentHex }}>
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-between gap-2 text-[8.5px] font-bold font-['Orbitron',sans-serif]">
+              <span style={{ color: activeTheme.accentHex }} className="truncate">
                 LV.{levelInfo.level} {levelInfo.rankTitle.toUpperCase()}
               </span>
-              <span className="text-slate-400 tabular-nums">
+              <span className="text-slate-400 tabular-nums shrink-0">
                 {levelInfo.xpIntoLevel}/{levelInfo.xpNeededForNext} XP
               </span>
             </div>
@@ -256,19 +242,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               />
             </div>
             {!isSignedIn && (
-              <div className="flex items-center justify-between pt-1 mt-0.5 border-t border-white/5 gap-2">
-                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate">
+              <div className="flex items-center justify-between pt-2 mt-0.5 border-t border-white/10 gap-2.5">
+                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate text-left">
                   SYNC PROFILE & FRIENDS ACROSS DEVICES
                 </span>
                 <button
                   type="button"
                   onClick={onSignInGoogle}
                   style={{
-                    margin: 0,
                     color: activeTheme.accentHex,
                     borderColor: activeTheme.surfaceBorder,
                   }}
-                  className="px-2 py-1 rounded-lg bg-[#121c30] border text-[8px] font-black font-['Orbitron',sans-serif] tracking-wider hover:brightness-125 cursor-pointer shrink-0"
+                  className="px-2.5 py-1.5 rounded-lg bg-[#121c30] border text-[8px] font-black font-['Orbitron',sans-serif] tracking-wider hover:brightness-125 cursor-pointer shrink-0"
                 >
                   SIGN IN
                 </button>
@@ -278,14 +263,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Difficulty & Board Size Selector */}
-        <div className="w-full max-w-[330px] sm:max-w-[350px] flex flex-col gap-1.5">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[9px] font-bold tracking-widest text-slate-400 font-['Orbitron',sans-serif] uppercase">
+        <div className="w-full max-w-[350px] flex flex-col gap-2 shrink-0">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-[9px] font-bold tracking-widest text-slate-400 font-['Orbitron',sans-serif] uppercase truncate">
               MODE & BOARD SIZE
             </span>
             <span
               style={{ color: activeTheme.accentHex }}
-              className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif]"
+              className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] shrink-0"
             >
               {activeModeConfig.subtitle}
             </span>
@@ -302,20 +287,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   type="button"
                   onClick={() => onSelectDifficulty(modeId)}
                   style={{
-                    margin: 0,
                     backgroundColor: isSelected ? activeTheme.surfaceBg : '#0c1220',
                     borderColor: isSelected ? activeTheme.accentHex : activeTheme.surfaceBorder,
                     boxShadow: isSelected ? `0 0 14px ${activeTheme.accentGlowRgba}` : undefined,
                   }}
-                  className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all cursor-pointer active:scale-95 text-slate-300 hover:text-white"
+                  className="flex flex-col items-center justify-center gap-1.5 py-2.5 px-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 text-slate-300 hover:text-white"
                 >
                   <span
                     style={{ color: isSelected ? activeTheme.accentHex : '#e2e8f0' }}
-                    className="text-xs font-black font-['Orbitron',sans-serif] leading-tight"
+                    className="text-xs font-black font-['Orbitron',sans-serif] leading-none"
                   >
                     {cfg.boardSize}×{cfg.boardSize}
                   </span>
-                  <span className="text-[8px] font-bold tracking-wider font-['Orbitron',sans-serif] mt-0.5 leading-none">
+                  <span className="text-[8px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none">
                     {cfg.label}
                   </span>
                 </button>
@@ -325,27 +309,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Progression, Themes & Friends Quick Hub */}
-        <div className="grid grid-cols-4 gap-1.5 w-full max-w-[330px] sm:max-w-[350px]">
+        <div className="grid grid-cols-4 gap-2 w-full max-w-[350px] shrink-0">
           <button
             type="button"
             onClick={onOpenDaily}
             style={{
-              margin: 0,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: unclaimedDailyCount > 0 ? activeTheme.accentHex : activeTheme.surfaceBorder,
             }}
-            className="relative flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1.5 py-2.5 px-1.5 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
           >
-            {unclaimedDailyCount > 0 && (
-              <span
-                style={{ backgroundColor: activeTheme.accentHex }}
-                className="w-2 h-2 rounded-full absolute top-1.5 right-1.5 animate-pulse"
-              />
-            )}
-            <span className="text-[10px] font-black text-amber-300 font-['Orbitron',sans-serif] leading-tight">
-              🔥 {playerStats.dailyStreak}d
+            <span className="flex items-center justify-center gap-1.5 text-[10px] font-black text-amber-300 font-['Orbitron',sans-serif] leading-none">
+              <span>🔥 {playerStats.dailyStreak}d</span>
+              {unclaimedDailyCount > 0 && (
+                <span
+                  style={{ backgroundColor: activeTheme.accentHex }}
+                  className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                  aria-label="Unclaimed quest available"
+                />
+              )}
             </span>
-            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] leading-none">
               DAILY
             </span>
           </button>
@@ -354,19 +338,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             type="button"
             onClick={onOpenAchievements}
             style={{
-              margin: 0,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1.5 py-2.5 px-1.5 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
           >
             <span
               style={{ color: activeTheme.accentHex }}
-              className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight"
+              className="text-[10px] font-black font-['Orbitron',sans-serif] leading-none tabular-nums"
             >
               {playerStats.unlockedAchievements.length}/{ACHIEVEMENTS.length}
             </span>
-            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] leading-none">
               AWARDS
             </span>
           </button>
@@ -375,13 +358,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             type="button"
             onClick={onOpenThemes}
             style={{
-              margin: 0,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1.5 py-2.5 px-1.5 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
           >
-            <span className="flex items-center gap-1 leading-tight">
+            <span className="flex items-center gap-1.5 leading-none">
               <span
                 style={{ backgroundColor: activeTheme.swatchPrimary }}
                 className="w-2.5 h-2.5 rounded-full inline-block"
@@ -391,7 +373,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 className="w-2.5 h-2.5 rounded-full inline-block"
               />
             </span>
-            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] leading-none">
               THEMES
             </span>
           </button>
@@ -400,38 +382,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             type="button"
             onClick={onOpenFriends}
             style={{
-              margin: 0,
               backgroundColor: activeTheme.surfaceBg,
               borderColor: incomingFriendRequests > 0 ? '#fb7185' : activeTheme.surfaceBorder,
             }}
-            className="relative flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1.5 py-2.5 px-1.5 rounded-xl border text-slate-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
           >
-            {incomingFriendRequests > 0 && (
-              <span className="px-1 rounded-full bg-rose-500 text-white text-[7.5px] font-black absolute top-1 right-1 animate-pulse leading-tight">
-                {incomingFriendRequests}
+            <span className="flex items-center justify-center gap-1.5 leading-none">
+              <span
+                style={{ color: activeTheme.accentHex }}
+                className="text-[10px] font-black font-['Orbitron',sans-serif] tabular-nums"
+              >
+                {friendCount}
               </span>
-            )}
-            <span
-              style={{ color: activeTheme.accentHex }}
-              className="text-[10px] font-black font-['Orbitron',sans-serif] leading-tight"
-            >
-              {friendCount}
+              {incomingFriendRequests > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[7px] font-black leading-none shrink-0">
+                  +{incomingFriendRequests}
+                </span>
+              )}
             </span>
-            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] mt-1 leading-none">
+            <span className="text-[7.5px] font-bold tracking-wider text-slate-300 font-['Orbitron',sans-serif] leading-none">
               FRIENDS
             </span>
           </button>
         </div>
       </div>
 
-      {/* Spacious Main Action Buttons */}
-      <div className="w-full max-w-[330px] sm:max-w-[350px] px-2 flex flex-col gap-2.5 mb-2 shrink-0">
+      {/* Spacious Main Action Buttons + Quiet Footer */}
+      <div className="w-full max-w-[350px] px-1 flex flex-col gap-2.5 shrink-0">
         {/* PRIMARY: JUMP INTO THE GAME */}
         <button
           type="button"
           onClick={onStartGame}
           style={{
-            margin: 0,
             backgroundColor: activeTheme.primaryBtnBg,
             color: activeTheme.primaryBtnText,
             boxShadow: `0 0 24px ${activeTheme.accentGlowRgba}`,
@@ -446,7 +428,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           type="button"
           onClick={onOpenLeaderboard}
           style={{
-            margin: 0,
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
@@ -454,12 +435,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         >
           LEADERBOARD
         </button>
-      </div>
 
-      {/* Clean quiet footer */}
-      <footer className="text-[9px] text-slate-600 font-['Orbitron',sans-serif] tracking-widest uppercase pb-2 mb-1 leading-normal shrink-0">
-        Match Rows & Columns
-      </footer>
+        <footer className="text-[9px] text-slate-500 font-['Orbitron',sans-serif] tracking-widest uppercase pt-1 leading-none">
+          Match Rows & Columns
+        </footer>
+      </div>
     </div>
   );
 };

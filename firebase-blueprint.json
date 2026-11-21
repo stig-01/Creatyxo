@@ -148,6 +148,10 @@
           "type": "string",
           "description": "Currently equipped visual theme ID",
           "maxLength": 32
+        },
+        "modeBestScores": {
+          "type": "object",
+          "description": "Verified best scores keyed by grid mode (easy 10x10, classic 8x8, hard 6x6, extreme 4x4)"
         }
       },
       "required": [

@@ -151,7 +151,7 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
 
   return (
     <div
-      className="fixed inset-[10px] z-[60] flex items-center justify-center p-1 sm:p-4 bg-[#060910]/92 backdrop-blur-md animate-fadeIn select-none rounded-2xl overflow-hidden"
+      className="fixed inset-[10px] z-[60] flex items-center justify-center p-2.5 sm:p-4 bg-[#060910]/92 backdrop-blur-md animate-fadeIn select-none rounded-2xl overflow-hidden"
       onClick={onClose}
     >
       <div
@@ -160,7 +160,7 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
           borderColor: accentHex,
           boxShadow: `0 18px 50px rgba(0,0,0,0.85), 0 0 28px ${previewTheme.accentGlowRgba}`,
         }}
-        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-[96vh] rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col mx-auto relative overflow-hidden px-4 py-3 sm:px-6 sm:py-4 justify-between"
+        className="w-full max-w-[440px] h-full sm:h-[840px] sm:max-h-full rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col mx-auto relative overflow-hidden px-3.5 py-3.5 sm:px-6 sm:py-5 justify-between gap-2.5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Interactive Preview Top Bar */}
@@ -169,7 +169,7 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
             backgroundColor: previewTheme.surfaceBg,
             borderColor: accentHex,
           }}
-          className="shrink-0 mb-1 px-3 py-1.5 rounded-xl border flex items-center justify-between gap-2 z-20"
+          className="shrink-0 px-3 py-2 rounded-xl border flex items-center justify-between gap-2.5 z-20"
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[11px] shrink-0">{skinMeta.badgeIcon}</span>
@@ -196,17 +196,13 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
         </div>
 
         {/* Non-playable 1:1 Gameplay Screen Replica */}
-        <div className="flex-1 min-h-0 flex flex-col justify-between pointer-events-none select-none">
+        <div className="flex-1 min-h-0 flex flex-col justify-between gap-2 pointer-events-none select-none">
           {/* Top Header Section */}
-          <header className="flex flex-col gap-2 w-full shrink-0 px-2 sm:px-2.5 pt-0.5">
+          <header className="flex flex-col gap-2.5 w-full shrink-0 px-1 sm:px-1.5">
             {/* Top Bar: Home, Title, Settings */}
-            <div className="flex items-center justify-between w-full">
+            <div className="flex items-center justify-between gap-2 w-full">
               <div
                 style={{
-                  marginLeft: 10,
-                  marginTop: 6,
-                  marginRight: 4,
-                  marginBottom: 4,
                   backgroundColor: previewTheme.surfaceBg,
                   borderColor: previewTheme.surfaceBorder,
                 }}
@@ -217,17 +213,17 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                 </svg>
               </div>
 
-              <div className="flex flex-col items-center justify-center">
+              <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1.5">
                 <span
                   style={{
                     color: previewTheme.titleTextColor,
                     filter: `drop-shadow(0 0 16px ${previewTheme.accentGlowRgba})`,
                   }}
-                  className="text-xl sm:text-2xl tracking-wider uppercase font-['Black_Ops_One',sans-serif] text-center px-2 leading-none"
+                  className="text-xl sm:text-2xl tracking-wider uppercase font-['Black_Ops_One',sans-serif] text-center px-1 leading-none"
                 >
                   CREATYXO
                 </span>
-                <span className="text-[8.5px] font-bold tracking-[0.18em] text-slate-400 font-['Orbitron',sans-serif] mt-1">
+                <span className="text-[8.5px] font-bold tracking-[0.16em] text-slate-400 font-['Orbitron',sans-serif] leading-none truncate max-w-full">
                   {boardSize}×{boardSize} • {difficultyLabel} •{' '}
                   <span style={{ color: previewTheme.accentHex }}>LV.{playerLevel}</span>
                 </span>
@@ -236,10 +232,6 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
               <div
                 style={{
                   padding: 8,
-                  marginLeft: 4,
-                  marginRight: 10,
-                  marginTop: 6,
-                  marginBottom: 4,
                   backgroundColor: previewTheme.surfaceBg,
                   borderColor: previewTheme.surfaceBorder,
                 }}
@@ -258,17 +250,17 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                   backgroundColor: previewTheme.surfaceBg,
                   borderColor: previewTheme.surfaceBorder,
                 }}
-                className="border rounded-2xl px-3.5 py-2 flex flex-col justify-center gap-0.5 shadow-sm min-h-[52px]"
+                className="border rounded-2xl px-3.5 py-2.5 flex flex-col justify-center gap-1.5 shadow-sm min-h-[54px]"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
+                  <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-none">
                     SCORE
                   </span>
-                  <span className="text-[8px] font-bold text-[#f43f5e] bg-[#2d1523] border border-[#4d1f35] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-normal">
+                  <span className="text-[8px] font-bold text-[#f43f5e] bg-[#2d1523] border border-[#4d1f35] px-1.5 py-0.5 rounded-full font-['Orbitron',sans-serif] leading-none">
                     2×
                   </span>
                 </div>
-                <div className="text-lg sm:text-xl font-black text-white tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums">
+                <div className="text-lg sm:text-xl font-black text-white tracking-wide font-['Orbitron',sans-serif] leading-none tabular-nums">
                   2,450
                 </div>
               </div>
@@ -278,17 +270,17 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                   backgroundColor: previewTheme.surfaceBg,
                   borderColor: previewTheme.surfaceBorder,
                 }}
-                className="border rounded-2xl px-3.5 py-2 flex flex-col justify-center gap-0.5 shadow-sm min-h-[52px]"
+                className="border rounded-2xl px-3.5 py-2.5 flex flex-col justify-center gap-1.5 shadow-sm min-h-[54px]"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-normal">
+                  <span className="text-[9.5px] font-bold text-slate-400 tracking-wider font-['Orbitron',sans-serif] leading-none">
                     BEST ({boardSize}×{boardSize})
                   </span>
-                  <span className="text-[9.5px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-normal">
+                  <span className="text-[9.5px] text-slate-500 font-bold font-['Orbitron',sans-serif] leading-none">
                     #{userRank}
                   </span>
                 </div>
-                <div className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-normal tabular-nums">
+                <div className="text-lg sm:text-xl font-black text-[#f6c445] tracking-wide font-['Orbitron',sans-serif] leading-none tabular-nums">
                   {Math.max(modeBestScore, 2450).toLocaleString()}
                 </div>
               </div>
@@ -301,17 +293,17 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                 borderColor: '#fbbf24',
                 boxShadow: `0 0 14px ${previewTheme.accentGlowRgba}`,
               }}
-              className="border rounded-xl px-3 py-1.5 flex flex-col gap-1"
+              className="border rounded-xl px-3 py-2 flex flex-col gap-1.5"
             >
-              <div className="flex items-center justify-between text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400">COMBO METER</span>
-                  <span style={{ color: '#fbbf24' }}>• HOT STREAK</span>
+              <div className="flex items-center justify-between gap-2 text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider leading-none">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-slate-400 shrink-0">COMBO METER</span>
+                  <span style={{ color: '#fbbf24' }} className="truncate">• HOT STREAK</span>
                 </div>
-                <span style={{ color: '#fbbf24' }}>2× (1.5× PTS)</span>
+                <span style={{ color: '#fbbf24' }} className="shrink-0">2× (1.5× PTS)</span>
               </div>
 
-              <div className="w-full h-1.5 rounded-full bg-[#11192a] overflow-hidden grid grid-cols-5 gap-1 p-[1px]">
+              <div className="w-full h-2 rounded-full bg-[#11192a] overflow-hidden grid grid-cols-5 gap-1.5 p-[2px]">
                 {[1, 2, 3, 4, 5].map((segment) => {
                   const isLit = segment <= 2;
                   return (
@@ -333,14 +325,13 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
             </div>
           </header>
 
-          {/* Center Playfield: Full-Size Board + 3-Slot Piece Tray */}
-          <div className="w-full flex-1 flex flex-col items-center justify-center gap-2.5 sm:gap-3 my-auto min-h-0 px-2">
+          {/* Center Playfield: Responsive Board + 3-Slot Piece Tray */}
+          <div className="w-full flex-1 flex flex-col items-center justify-center gap-3 my-auto min-h-0 px-1">
             {/* Full-Size Board */}
             <div className="w-full flex items-center justify-center">
               <div
                 style={{
-                  width: '100%',
-                  maxWidth: 292,
+                  width: 'min(100%, 284px, 35dvh)',
                   aspectRatio: '1 / 1',
                   backgroundColor: previewTheme.boardBg,
                   padding: 10,
@@ -351,7 +342,7 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                 className="relative"
               >
                 <div
-                  className={`grid ${boardSize >= 10 ? 'gap-1' : 'gap-1 sm:gap-1.5'} w-full h-full`}
+                  className={`grid ${boardSize >= 10 ? 'gap-[5px]' : 'gap-1.5'} w-full h-full`}
                   style={{
                     gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))`,
                     gridTemplateRows: `repeat(${boardSize}, minmax(0, 1fr))`,
@@ -390,12 +381,15 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
             </div>
 
             {/* 3-Slot Piece Tray */}
-            <div className="grid grid-cols-3 gap-3 w-full max-w-[292px]">
+            <div
+              style={{ width: 'min(100%, 284px, 35dvh)' }}
+              className="grid grid-cols-3 gap-2.5 sm:gap-3"
+            >
               {PREVIEW_TRAY_PIECES.map((piece, idx) => (
                 <div
                   key={idx}
                   style={{
-                    height: 70,
+                    height: 68,
                     borderRadius: 16,
                     backgroundColor: previewTheme.surfaceBg,
                     border: `1px solid ${previewTheme.surfaceBorder}`,
@@ -411,12 +405,12 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
           {/* Bottom Navigation Look */}
           <nav
             style={{ borderColor: previewTheme.surfaceBorder }}
-            className="w-full flex items-center justify-around border-t pt-2 pb-1 px-2 sm:px-4 shrink-0 gap-2"
+            className="w-full flex items-center justify-around border-t pt-2.5 pb-1 px-2 sm:px-4 shrink-0 gap-3"
             aria-label="Preview Navigation"
           >
             <div
               style={{ color: previewTheme.accentHex }}
-              className="flex-1 max-w-[88px] min-h-[42px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1"
+              className="flex-1 max-w-[88px] min-h-[42px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5"
             >
               <div
                 style={{ backgroundColor: previewTheme.surfaceBg }}
@@ -429,29 +423,29 @@ export const CosmeticPreviewModal: React.FC<CosmeticPreviewModalProps> = ({
                   <rect x="14" y="14" width="7" height="7" rx="1.5" />
                 </svg>
               </div>
-              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal">
+              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none">
                 PLAY
               </span>
             </div>
 
-            <div className="flex-1 max-w-[88px] min-h-[42px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1 text-slate-400">
+            <div className="flex-1 max-w-[88px] min-h-[42px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400">
               <div className="w-5 h-5 flex items-center justify-center shrink-0">
                 <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                   <path d="M5 19h3v-6H5v6zm6 0h3V5h-3v14zm6 0h3v-9h-3v9z" />
                 </svg>
               </div>
-              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal">
+              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none">
                 RANK
               </span>
             </div>
 
-            <div className="flex-1 max-w-[88px] min-h-[42px] py-1 px-1.5 rounded-xl flex flex-col items-center justify-center text-center gap-1 text-slate-400">
+            <div className="flex-1 max-w-[88px] min-h-[42px] py-1.5 px-2 rounded-xl flex flex-col items-center justify-center text-center gap-1.5 text-slate-400">
               <div className="w-5 h-5 flex items-center justify-center shrink-0">
                 <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                   <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
                 </svg>
               </div>
-              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-normal">
+              <span className="text-[9px] font-bold tracking-wider font-['Orbitron',sans-serif] leading-none">
                 SETTINGS
               </span>
             </div>

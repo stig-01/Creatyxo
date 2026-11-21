@@ -91,7 +91,7 @@ export const ThemesModal: React.FC<ThemesModalProps> = ({
         {/* Header */}
         <div
           style={{ borderColor: activeTheme.surfaceBorder }}
-          className="flex items-center justify-between border-b pb-3 shrink-0"
+          className="flex items-center justify-between gap-2.5 border-b pb-3 shrink-0"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div
@@ -106,11 +106,11 @@ export const ThemesModal: React.FC<ThemesModalProps> = ({
                 <path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
               </svg>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider truncate">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <h2 className="text-sm font-black text-white font-['Orbitron',sans-serif] tracking-wider truncate leading-none">
                 {tab === 'themes' ? 'BOARD THEMES' : 'BLOCK SKINS'}
               </h2>
-              <p className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide mt-0.5">
+              <p className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] tracking-wide leading-snug">
                 {tab === 'themes'
                   ? `${unlockedCount}/${THEME_ORDER.length} UNLOCKED • PREVIEW ANY THEME`
                   : `${unlockedSkinsCount}/${BLOCK_SKIN_ORDER.length} UNLOCKED • STREAK REWARDS`}
@@ -224,11 +224,11 @@ export const ThemesModal: React.FC<ThemesModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex flex-col min-w-0 text-left items-start gap-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex flex-col min-w-0 text-left items-start gap-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span
                           style={{ color: theme.accentHex }}
-                          className="text-xs font-black font-['Orbitron',sans-serif] tracking-wide"
+                          className="text-xs font-black font-['Orbitron',sans-serif] tracking-wide leading-tight"
                         >
                           {theme.name}
                         </span>
@@ -360,11 +360,11 @@ export const ThemesModal: React.FC<ThemesModalProps> = ({
                       })}
                     </div>
 
-                    <div className="flex flex-col min-w-0 flex-1 text-left items-start gap-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex flex-col min-w-0 flex-1 text-left items-start gap-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span
                           style={{ color: skin.accentHex }}
-                          className="text-xs font-black font-['Orbitron',sans-serif] tracking-wide"
+                          className="text-xs font-black font-['Orbitron',sans-serif] tracking-wide leading-tight"
                         >
                           {skin.badgeIcon} {skin.name}
                         </span>
@@ -380,7 +380,7 @@ export const ThemesModal: React.FC<ThemesModalProps> = ({
                       </span>
 
                       {!unlocked && (
-                        <div className="w-full flex items-center gap-2 mt-0.5">
+                        <div className="w-full flex items-center gap-2 mt-1">
                           <div className="flex-1 h-1.5 rounded-full bg-[#131c2e] overflow-hidden">
                             <div
                               style={{

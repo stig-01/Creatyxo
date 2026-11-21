@@ -354,6 +354,41 @@ export function playGameOverSound(enabled = true) {
   }
 }
 
+/**
+ * Bright celebratory chime for finishing a quest, unlocking a theme/skin, or leveling up
+ */
+export function playRewardChimeSound(enabled = true) {
+  if (!enabled || currentSoundVolume <= 0) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const destination = getSfxDestination(ctx);
+    const notes = [587.33, 739.99, 880, 1174.66]; // D5 -> F#5 -> A5 -> D6
+
+    notes.forEach((freq, idx) => {
+      const start = now + idx * 0.055;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === notes.length - 1 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+
+      const peak = (idx === notes.length - 1 ? 0.36 : 0.28) * currentSoundVolume;
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(peak, start + 0.014);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.34);
+
+      osc.connect(gain);
+      gain.connect(destination);
+      osc.start(start);
+      osc.stop(start + 0.35);
+    });
+  } catch {
+    // Ignore
+  }
+}
+
 // -------------------------------------------------------------
 // CHILL AMBIENT BACKGROUND MUSIC GENERATOR (Web Audio API)
 // -------------------------------------------------------------

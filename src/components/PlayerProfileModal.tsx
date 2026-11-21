@@ -22,6 +22,11 @@ interface PlayerProfileModalProps {
   activeTheme: GameTheme;
   currentPlayerId?: string;
   friendships?: FriendshipRecord[];
+  isSignedIn?: boolean;
+  authEmail?: string | null;
+  hasPendingSync?: boolean;
+  onSignInGoogle?: () => void;
+  onSignOut?: () => void;
   onEditName?: () => void;
   onSendFriendRequest?: (entry: LeaderboardEntry) => void;
   onAcceptFriendRequest?: (friendshipId: string) => void;
@@ -36,6 +41,11 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   activeTheme,
   currentPlayerId,
   friendships = [],
+  isSignedIn = false,
+  authEmail,
+  hasPendingSync = false,
+  onSignInGoogle,
+  onSignOut,
   onEditName,
   onSendFriendRequest,
   onAcceptFriendRequest,
@@ -139,7 +149,10 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     },
   ];
 
-  const canManageFriend = Boolean(!isSelf && currentPlayerId && entry.id !== currentPlayerId);
+  const isBenchmarkPlayer = Boolean(entry.isBenchmark || entry.id.startsWith('bot_'));
+  const canManageFriend = Boolean(
+    !isSelf && !isBenchmarkPlayer && currentPlayerId && entry.id !== currentPlayerId
+  );
   const isFriend = relationship?.status === 'accepted';
   const isPendingIncoming =
     relationship?.status === 'pending' && relationship.toId === currentPlayerId;
@@ -281,6 +294,59 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
         {/* Footer Buttons */}
         <div className="flex flex-col gap-2 shrink-0">
+          {isSelf && (
+            <div
+              style={{
+                backgroundColor: activeTheme.surfaceBg,
+                borderColor: activeTheme.surfaceBorder,
+              }}
+              className="rounded-xl border px-3 py-2 flex items-center justify-between gap-2"
+            >
+              <div className="flex flex-col text-left min-w-0">
+                <span className="text-[8.5px] font-black font-['Orbitron',sans-serif] text-white tracking-wider">
+                  {isSignedIn
+                    ? hasPendingSync
+                      ? 'CLOUD ACCOUNT • SYNC PENDING'
+                      : 'CLOUD ACCOUNT • SYNCED'
+                    : 'LOCAL GUEST PROGRESS'}
+                </span>
+                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate">
+                  {isSignedIn
+                    ? authEmail || 'Synced across devices'
+                    : 'Sign in with Google to carry progress'}
+                </span>
+              </div>
+
+              {isSignedIn ? (
+                onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    style={{ margin: 0 }}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#191522] border border-rose-500/30 text-[8.5px] font-bold text-rose-300 hover:bg-rose-500/20 font-['Orbitron',sans-serif] cursor-pointer shrink-0"
+                  >
+                    SIGN OUT
+                  </button>
+                )
+              ) : (
+                onSignInGoogle && (
+                  <button
+                    type="button"
+                    onClick={onSignInGoogle}
+                    style={{
+                      margin: 0,
+                      borderColor: activeTheme.accentHex,
+                      color: activeTheme.accentHex,
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#121e33] border text-[8.5px] font-black font-['Orbitron',sans-serif] cursor-pointer hover:brightness-125 shrink-0"
+                  >
+                    GOOGLE SYNC
+                  </button>
+                )
+              )}
+            </div>
+          )}
+
           {isSelf && onEditName && (
             <button
               type="button"
@@ -295,7 +361,23 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             </button>
           )}
 
-          {canManageFriend && (
+          {canManageFriend && !isSignedIn && onSignInGoogle && (
+            <button
+              type="button"
+              onClick={onSignInGoogle}
+              style={{
+                margin: 0,
+                borderColor: activeTheme.accentHex,
+                color: activeTheme.accentHex,
+                backgroundColor: activeTheme.surfaceBg,
+              }}
+              className="btn-creatyxo w-full rounded-xl border font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer hover:brightness-110 active:scale-95 transition-all"
+            >
+              SIGN IN TO ADD FRIEND
+            </button>
+          )}
+
+          {canManageFriend && isSignedIn && (
             <>
               {isFriend && relationship ? (
                 <div className="flex items-center gap-2">

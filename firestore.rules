@@ -14,6 +14,14 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -22,12 +30,96 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isValidOptionalNonNegNumber(data, field, maxVal) {
-      return !(field in data) || (data[field] is number && data[field] >= 0 && data[field] <= maxVal);
+    function isValidAvatarUrl(url) {
+      return url is string
+        && url.size() <= 24000
+        && url.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$');
+    }
+
+    function expectedTier(score) {
+      return score >= 15000 ? 'Grandmaster'
+        : score >= 10000 ? 'Master'
+        : score >= 6000 ? 'Diamond'
+        : score >= 3500 ? 'Platinum'
+        : score >= 2000 ? 'Gold'
+        : score >= 800 ? 'Silver'
+        : 'Bronze';
+    }
+
+    function levelMatchesXp(level, xp) {
+      return level is number
+        && level >= 1
+        && level <= 250
+        && xp is number
+        && xp >= 100 * (level - 1) * level
+        && xp < 100 * level * (level + 1);
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'profile', 'stats', 'modeBestScores', 'bestScore',
+          'activeThemeId', 'activeBlockSkinId', 'preferencesUpdatedAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'profile', 'stats', 'modeBestScores', 'bestScore',
+          'activeThemeId', 'activeBlockSkinId', 'preferencesUpdatedAt', 'updatedAt'
+        ])
+        && data.uid is string
+        && data.uid == userId
+        && data.profile is map
+        && data.profile.keys().hasAll(['username', 'avatarLetter', 'hasChosenName'])
+        && data.profile.keys().hasOnly(['username', 'tag', 'avatarLetter', 'avatarUrl', 'hasChosenName'])
+        && data.profile.username is string
+        && data.profile.username.size() >= 1
+        && data.profile.username.size() <= 30
+        && data.profile.avatarLetter is string
+        && data.profile.avatarLetter.size() >= 1
+        && data.profile.avatarLetter.size() <= 2
+        && data.profile.hasChosenName is bool
+        && (!('tag' in data.profile) || data.profile.tag == null || (data.profile.tag is string && data.profile.tag.size() <= 10))
+        && (!('avatarUrl' in data.profile) || data.profile.avatarUrl == null || isValidAvatarUrl(data.profile.avatarUrl))
+        && data.stats is map
+        && data.stats.keys().hasAll([
+          'xp', 'totalPlaytimeSec', 'longestSessionSec', 'gamesPlayed', 'totalLinesCleared',
+          'totalBlocksPlaced', 'bestCombo', 'bestSingleMoveLines', 'extremeBestScore',
+          'hardBestScore', 'totalQuestsClaimed', 'dailyStreak', 'bestDailyStreak',
+          'lastActiveDate', 'unlockedAchievements', 'achievementUnlockedAt', 'dailyProgress'
+        ])
+        && data.stats.xp is number && data.stats.xp >= 0 && data.stats.xp <= 5000000
+        && data.stats.totalPlaytimeSec is number && data.stats.totalPlaytimeSec >= 0 && data.stats.totalPlaytimeSec <= 100000000
+        && data.stats.longestSessionSec is number && data.stats.longestSessionSec >= 0 && data.stats.longestSessionSec <= data.stats.totalPlaytimeSec + 60
+        && data.stats.gamesPlayed is number && data.stats.gamesPlayed >= 0 && data.stats.gamesPlayed <= 1000000
+        && data.stats.totalLinesCleared is number && data.stats.totalLinesCleared >= 0 && data.stats.totalLinesCleared <= 10000000
+        && data.stats.totalBlocksPlaced is number && data.stats.totalBlocksPlaced >= 0 && data.stats.totalBlocksPlaced <= 100000000
+        && data.stats.bestCombo is number && data.stats.bestCombo >= 0 && data.stats.bestCombo <= 500 && data.stats.bestCombo <= data.stats.totalLinesCleared
+        && data.stats.dailyStreak is number && data.stats.dailyStreak >= 1 && data.stats.dailyStreak <= 3650
+        && data.stats.bestDailyStreak is number && data.stats.bestDailyStreak >= 1 && data.stats.bestDailyStreak <= 3650
+        && data.stats.lastActiveDate is string && data.stats.lastActiveDate.size() <= 16
+        && data.stats.unlockedAchievements is list && data.stats.unlockedAchievements.size() <= 16
+        && data.stats.achievementUnlockedAt is map
+        && data.stats.dailyProgress is map
+        && (!('unlockedBlockSkins' in data.stats) || (data.stats.unlockedBlockSkins is list && data.stats.unlockedBlockSkins.size() <= 10))
+        && data.modeBestScores is map
+        && data.modeBestScores.keys().hasAll(['easy', 'classic', 'hard', 'extreme'])
+        && data.modeBestScores.keys().hasOnly(['easy', 'classic', 'hard', 'extreme'])
+        && data.modeBestScores.easy is number && data.modeBestScores.easy >= 0 && data.modeBestScores.easy <= 250000
+        && data.modeBestScores.classic is number && data.modeBestScores.classic >= 0 && data.modeBestScores.classic <= 250000
+        && data.modeBestScores.hard is number && data.modeBestScores.hard >= 0 && data.modeBestScores.hard <= 250000
+        && data.modeBestScores.extreme is number && data.modeBestScores.extreme >= 0 && data.modeBestScores.extreme <= 250000
+        && data.bestScore is number && data.bestScore >= 0 && data.bestScore <= 250000
+        && (data.bestScore == 0 || ((data.stats.gamesPlayed >= 1 || data.stats.totalLinesCleared >= 1 || data.stats.totalPlaytimeSec >= 5) && data.bestScore <= 2500 + data.stats.totalLinesCleared * 10000))
+        && data.activeThemeId is string && data.activeThemeId.size() > 0 && data.activeThemeId.size() <= 32
+        && data.activeBlockSkinId is string && data.activeBlockSkinId.size() > 0 && data.activeBlockSkinId.size() <= 32
+        && data.preferencesUpdatedAt is number && data.preferencesUpdatedAt >= 0
+        && data.updatedAt == request.time;
     }
 
     function isValidLeaderboardEntry(data, playerId) {
-      return data.keys().hasAll(['id', 'username', 'score', 'avatarLetter', 'tier', 'updatedAt'])
+      return data.keys().hasAll([
+          'id', 'username', 'score', 'avatarLetter', 'tier', 'updatedAt',
+          'xp', 'level', 'totalPlaytimeSec', 'longestSessionSec', 'gamesPlayed',
+          'totalLinesCleared', 'bestCombo', 'dailyStreak', 'achievementsCount'
+        ])
         && data.keys().hasOnly([
           'id', 'username', 'tag', 'score', 'avatarLetter', 'avatarUrl', 'tier', 'updatedAt',
           'xp', 'level', 'totalPlaytimeSec', 'longestSessionSec', 'gamesPlayed',
@@ -36,32 +128,28 @@ service cloud.firestore {
         && data.id is string
         && data.id == playerId
         && data.username is string
-        && data.username.size() > 0
+        && data.username.size() >= 1
         && data.username.size() <= 30
         && (!('tag' in data) || data.tag == null || (data.tag is string && data.tag.size() <= 10))
         && data.score is number
         && data.score >= 0
-        && data.score <= 10000000
+        && data.score <= 250000
+        && (data.score == 0 || ((data.gamesPlayed >= 1 || data.totalLinesCleared >= 1 || data.totalPlaytimeSec >= 5) && data.score <= 2500 + data.totalLinesCleared * 10000))
         && data.avatarLetter is string
-        && data.avatarLetter.size() > 0
+        && data.avatarLetter.size() >= 1
         && data.avatarLetter.size() <= 2
-        && (!('avatarUrl' in data) || data.avatarUrl == null || (
-          data.avatarUrl is string
-          && data.avatarUrl.size() <= 24000
-          && data.avatarUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$')
-        ))
-        && data.tier in ['Grandmaster', 'Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze']
-        && data.updatedAt is number
-        && data.updatedAt >= 0
-        && isValidOptionalNonNegNumber(data, 'xp', 100000000)
-        && isValidOptionalNonNegNumber(data, 'level', 1000)
-        && isValidOptionalNonNegNumber(data, 'totalPlaytimeSec', 100000000)
-        && isValidOptionalNonNegNumber(data, 'longestSessionSec', 10000000)
-        && isValidOptionalNonNegNumber(data, 'gamesPlayed', 1000000)
-        && isValidOptionalNonNegNumber(data, 'totalLinesCleared', 10000000)
-        && isValidOptionalNonNegNumber(data, 'bestCombo', 1000)
-        && isValidOptionalNonNegNumber(data, 'dailyStreak', 10000)
-        && isValidOptionalNonNegNumber(data, 'achievementsCount', 100)
+        && (!('avatarUrl' in data) || data.avatarUrl == null || isValidAvatarUrl(data.avatarUrl))
+        && data.tier == expectedTier(data.score)
+        && data.updatedAt == request.time
+        && data.xp is number && data.xp >= 0 && data.xp <= 5000000
+        && levelMatchesXp(data.level, data.xp)
+        && data.totalPlaytimeSec is number && data.totalPlaytimeSec >= 0 && data.totalPlaytimeSec <= 100000000
+        && data.longestSessionSec is number && data.longestSessionSec >= 0 && data.longestSessionSec <= data.totalPlaytimeSec + 60
+        && data.gamesPlayed is number && data.gamesPlayed >= 0 && data.gamesPlayed <= 1000000
+        && data.totalLinesCleared is number && data.totalLinesCleared >= 0 && data.totalLinesCleared <= 10000000
+        && data.bestCombo is number && data.bestCombo >= 0 && data.bestCombo <= 500 && data.bestCombo <= data.totalLinesCleared
+        && data.dailyStreak is number && data.dailyStreak >= 1 && data.dailyStreak <= 3650
+        && data.achievementsCount is number && data.achievementsCount >= 0 && data.achievementsCount <= 16
         && (!('activeTheme' in data) || data.activeTheme == null || (data.activeTheme is string && data.activeTheme.size() <= 32));
     }
 
@@ -76,56 +164,118 @@ service cloud.firestore {
         && data.id == friendshipId
         && data.users is list
         && data.users.size() == 2
-        && data.users[0] is string
-        && data.users[1] is string
+        && data.users[0] is string && data.users[0].size() > 0 && data.users[0].size() <= 128
+        && data.users[1] is string && data.users[1].size() > 0 && data.users[1].size() <= 128
         && isValidId(data.fromId)
         && isValidId(data.toId)
         && data.fromId != data.toId
         && data.fromId in data.users
         && data.toId in data.users
+        && (friendshipId == data.fromId + '__' + data.toId || friendshipId == data.toId + '__' + data.fromId)
         && data.fromUsername is string
-        && data.fromUsername.size() > 0
+        && data.fromUsername.size() >= 1
         && data.fromUsername.size() <= 30
         && data.toUsername is string
-        && data.toUsername.size() > 0
+        && data.toUsername.size() >= 1
         && data.toUsername.size() <= 30
         && data.status in ['pending', 'accepted', 'declined']
-        && data.createdAt is number
-        && data.createdAt >= 0
-        && data.updatedAt is number
-        && data.updatedAt >= 0;
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      // Strictly private portable player save (only owner can read or write)
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId);
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().bestScore >= existing().bestScore
+        && incoming().modeBestScores.easy >= existing().modeBestScores.easy
+        && incoming().modeBestScores.classic >= existing().modeBestScores.classic
+        && incoming().modeBestScores.hard >= existing().modeBestScores.hard
+        && incoming().modeBestScores.extreme >= existing().modeBestScores.extreme
+        && incoming().stats.xp >= existing().stats.xp
+        && incoming().stats.gamesPlayed >= existing().stats.gamesPlayed
+        && incoming().stats.totalLinesCleared >= existing().stats.totalLinesCleared
+        && incoming().stats.totalPlaytimeSec >= existing().stats.totalPlaytimeSec
+        && incoming().stats.unlockedAchievements.size() >= existing().stats.unlockedAchievements.size();
+
+      allow delete: if false;
     }
 
     match /leaderboard/{playerId} {
-      // Public leaderboard and public player profile statistics (no PII)
-      allow read: if true;
+      // Public leaderboard and public player statistics (no PII), bounded query limit
+      allow get: if isValidId(playerId);
+      allow list: if request.query.limit <= 100;
 
-      // Validate schema, bounds, and allowed keys on create/update
-      allow create, update: if isValidId(playerId)
+      allow create: if isOwner(playerId)
+        && isValidId(playerId)
         && isValidLeaderboardEntry(incoming(), playerId);
+
+      allow update: if isOwner(playerId)
+        && isValidId(playerId)
+        && isValidLeaderboardEntry(incoming(), playerId)
+        && incoming().id == existing().id
+        && incoming().score >= existing().score
+        && incoming().xp >= existing().xp
+        && incoming().gamesPlayed >= existing().gamesPlayed
+        && incoming().totalLinesCleared >= existing().totalLinesCleared
+        && incoming().totalPlaytimeSec >= existing().totalPlaytimeSec
+        && incoming().bestCombo >= existing().bestCombo
+        && incoming().achievementsCount >= existing().achievementsCount
+        && (
+          !(existing().updatedAt is timestamp)
+          || (incoming().totalPlaytimeSec - existing().totalPlaytimeSec) <= ((request.time.toMillis() - existing().updatedAt.toMillis()) / 1000) + 120
+        );
 
       allow delete: if false;
     }
 
     match /friendships/{friendshipId} {
-      // Friend request queries & profile relationship status (no PII stored; writes strictly validated below)
-      allow get: if isValidFriendshipId(friendshipId);
-      allow list: if true;
+      // Strictly scoped to authenticated participants of the friendship
+      allow get: if isSignedIn()
+        && isValidFriendshipId(friendshipId)
+        && (resource == null || request.auth.uid in existing().users);
 
-      allow create: if isValidFriendshipId(friendshipId)
-        && isValidFriendship(incoming(), friendshipId)
-        && incoming().status == 'pending';
+      allow list: if isSignedIn()
+        && request.auth.uid in existing().users
+        && request.query.limit <= 100;
 
-      allow update: if isValidFriendshipId(friendshipId)
+      allow create: if isSignedIn()
+        && isValidFriendshipId(friendshipId)
         && isValidFriendship(incoming(), friendshipId)
+        && incoming().fromId == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/leaderboard/$(incoming().toId));
+
+      allow update: if isSignedIn()
+        && isValidFriendshipId(friendshipId)
+        && isValidFriendship(incoming(), friendshipId)
+        && request.auth.uid in existing().users
         && incoming().id == existing().id
         && incoming().users == existing().users
         && incoming().fromId == existing().fromId
         && incoming().toId == existing().toId
         && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (existing().status == 'pending' && request.auth.uid == existing().toId && incoming().status in ['accepted', 'declined'])
+          || (existing().status == 'declined' && request.auth.uid == incoming().fromId && incoming().status == 'pending')
+        )
         && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'fromUsername', 'toUsername']);
 
-      allow delete: if isValidFriendshipId(friendshipId);
+      allow delete: if isSignedIn()
+        && isValidFriendshipId(friendshipId)
+        && request.auth.uid in existing().users;
     }
   }
 }

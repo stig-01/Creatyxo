@@ -1,5 +1,65 @@
 {
   "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Portable private player save containing profile, lifetime progression stats, achievements, daily streak history, cosmetics, and per-mode high scores",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "profile": {
+          "type": "object",
+          "description": "Display profile metadata (no PII)"
+        },
+        "stats": {
+          "type": "object",
+          "description": "Player progression stats, achievements, daily challenges, and 30-day streak history"
+        },
+        "modeBestScores": {
+          "type": "object",
+          "description": "High scores keyed by difficulty mode (easy, classic, hard, extreme)"
+        },
+        "bestScore": {
+          "type": "number",
+          "description": "Verified all-time highest score across modes"
+        },
+        "activeThemeId": {
+          "type": "string",
+          "description": "Currently equipped visual board theme ID",
+          "maxLength": 32
+        },
+        "activeBlockSkinId": {
+          "type": "string",
+          "description": "Currently equipped cosmetic block skin ID",
+          "maxLength": 32
+        },
+        "preferencesUpdatedAt": {
+          "type": "number",
+          "description": "Client epoch ms when profile or cosmetic selection was last intentionally changed"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when cloud save was updated"
+        }
+      },
+      "required": [
+        "uid",
+        "profile",
+        "stats",
+        "modeBestScores",
+        "bestScore",
+        "activeThemeId",
+        "activeBlockSkinId",
+        "preferencesUpdatedAt",
+        "updatedAt"
+      ]
+    },
     "LeaderboardEntry": {
       "title": "LeaderboardEntry",
       "description": "A player score and public profile statistics entry on the global shared leaderboard",
@@ -7,7 +67,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique player ID",
+          "description": "Authenticated Firebase Auth UID",
+          "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
@@ -24,11 +85,12 @@
         },
         "score": {
           "type": "number",
-          "description": "Best score achieved"
+          "description": "Verified best score achieved"
         },
         "avatarLetter": {
           "type": "string",
           "description": "Single uppercase letter monogram",
+          "minLength": 1,
           "maxLength": 2
         },
         "avatarUrl": {
@@ -38,12 +100,13 @@
         },
         "tier": {
           "type": "string",
-          "description": "Rank tier based on score",
+          "description": "Rank tier mathematically derived from score",
           "enum": ["Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver", "Bronze"]
         },
         "updatedAt": {
-          "type": "number",
-          "description": "Epoch timestamp in milliseconds when record was saved"
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when record was saved"
         },
         "xp": {
           "type": "number",
@@ -51,7 +114,7 @@
         },
         "level": {
           "type": "number",
-          "description": "Player level derived from XP"
+          "description": "Player level mathematically derived from XP"
         },
         "totalPlaytimeSec": {
           "type": "number",
@@ -87,43 +150,64 @@
           "maxLength": 32
         }
       },
-      "required": ["id", "username", "score", "avatarLetter", "tier", "updatedAt"]
+      "required": [
+        "id",
+        "username",
+        "score",
+        "avatarLetter",
+        "tier",
+        "updatedAt",
+        "xp",
+        "level",
+        "totalPlaytimeSec",
+        "longestSessionSec",
+        "gamesPlayed",
+        "totalLinesCleared",
+        "bestCombo",
+        "dailyStreak",
+        "achievementsCount"
+      ]
     },
     "Friendship": {
       "title": "Friendship",
-      "description": "Friend request or accepted friendship between two player IDs",
+      "description": "Friend request or accepted friendship between two authenticated player UIDs",
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Deterministic sorted pair ID (playerA__playerB)",
+          "description": "Deterministic sorted pair ID (uidA__uidB)",
+          "minLength": 1,
           "maxLength": 260,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "users": {
           "type": "array",
-          "description": "Sorted pair of the two player IDs"
+          "description": "Sorted pair of the two participant UIDs"
         },
         "fromId": {
           "type": "string",
-          "description": "Player ID that initiated the friend request",
+          "description": "UID of the player who initiated the friend request",
+          "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "toId": {
           "type": "string",
-          "description": "Player ID that receives the friend request",
+          "description": "UID of the player who receives the friend request",
+          "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "fromUsername": {
           "type": "string",
           "description": "Display username of sender",
+          "minLength": 1,
           "maxLength": 30
         },
         "toUsername": {
           "type": "string",
           "description": "Display username of recipient",
+          "minLength": 1,
           "maxLength": 30
         },
         "status": {
@@ -132,25 +216,31 @@
           "enum": ["pending", "accepted", "declined"]
         },
         "createdAt": {
-          "type": "number",
-          "description": "Epoch timestamp when request was created"
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when request was created"
         },
         "updatedAt": {
-          "type": "number",
-          "description": "Epoch timestamp when status last changed"
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when status last changed"
         }
       },
       "required": ["id", "users", "fromId", "toId", "fromUsername", "toUsername", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Owner-only portable player account save keyed by Firebase Auth UID"
+    },
     "/leaderboard/{playerId}": {
       "schema": "LeaderboardEntry",
-      "description": "Global shared leaderboard and public player profile statistics keyed by unique player ID"
+      "description": "Global shared leaderboard and public player profile statistics keyed by Firebase Auth UID"
     },
     "/friendships/{friendshipId}": {
       "schema": "Friendship",
-      "description": "Mutual friend requests and accepted friendships between players"
+      "description": "Mutual friend requests and accepted friendships scoped strictly to participants"
     }
   }
 }

@@ -22,6 +22,10 @@ interface HomeScreenProps {
   unclaimedDailyCount: number;
   friendCount: number;
   incomingFriendRequests: number;
+  isSignedIn: boolean;
+  hasPendingSync: boolean;
+  isSyncingCloud: boolean;
+  onSignInGoogle: () => void;
   onOpenAudioSettings: () => void;
   onSelectDifficulty: (mode: DifficultyModeId) => void;
   onStartGame: () => void;
@@ -45,6 +49,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   unclaimedDailyCount,
   friendCount,
   incomingFriendRequests,
+  isSignedIn,
+  hasPendingSync,
+  isSyncingCloud,
+  onSignInGoogle,
   onOpenAudioSettings,
   onSelectDifficulty,
   onStartGame,
@@ -108,9 +116,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 LV.{levelInfo.level}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal">
-                {levelInfo.rankTitle.toUpperCase()} • PROFILE
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  isSignedIn
+                    ? isSyncingCloud || hasPendingSync
+                      ? 'bg-amber-400'
+                      : 'bg-emerald-400'
+                    : 'bg-slate-500'
+                }`}
+              />
+              <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] tracking-wider leading-normal truncate">
+                {isSignedIn
+                  ? hasPendingSync
+                    ? 'OFFLINE QUEUED'
+                    : 'CLOUD SAVED'
+                  : 'LOCAL GUEST'}
               </span>
             </div>
           </div>
@@ -234,6 +255,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 className="h-full rounded-full transition-all duration-300"
               />
             </div>
+            {!isSignedIn && (
+              <div className="flex items-center justify-between pt-1 mt-0.5 border-t border-white/5 gap-2">
+                <span className="text-[8px] text-slate-400 font-['Orbitron',sans-serif] truncate">
+                  SYNC PROFILE & FRIENDS ACROSS DEVICES
+                </span>
+                <button
+                  type="button"
+                  onClick={onSignInGoogle}
+                  style={{
+                    margin: 0,
+                    color: activeTheme.accentHex,
+                    borderColor: activeTheme.surfaceBorder,
+                  }}
+                  className="px-2 py-1 rounded-lg bg-[#121c30] border text-[8px] font-black font-['Orbitron',sans-serif] tracking-wider hover:brightness-125 cursor-pointer shrink-0"
+                >
+                  SIGN IN
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

@@ -52,16 +52,38 @@ import { ScoreCard } from './components/ScoreCard';
 import { BlockSkinOverlay } from './components/BlockSkinOverlay';
 import { CosmeticPreviewModal } from './components/CosmeticPreviewModal';
 import { ComboFlareOverlay, ComboFlareBurst } from './components/ComboFlareOverlay';
+import type { User } from 'firebase/auth';
 import {
   PlayerProfile,
   LeaderboardEntry,
   generateRandomName,
-  buildLeaderboard,
-  fetchSharedLeaderboard,
-  savePlayerToLeaderboard,
-  subscribeToLeaderboardUpdates,
-  getPlayerId,
+  mergeUserIntoLeaderboard,
+  fetchSharedLeaderboardRecords,
+  subscribeToLeaderboardRecords,
+  getCachedRemoteRecords,
+  getGuestPlayerId,
 } from './game/leaderboard';
+import {
+  FirestoreLeaderboardRecord,
+  getCurrentAuthUser,
+  subscribeToAuthChanges,
+  signInWithGoogle,
+  signOutPlayer,
+} from './game/firebase';
+import {
+  CloudAccountSnapshot,
+  loadLegacyLocalSnapshot,
+  loadLocalAccountSnapshot,
+  saveLocalAccountSnapshot,
+  syncAccountWithCloud,
+} from './game/cloudSync';
+import {
+  RecordedGameRun,
+  RecordedMove,
+  RecordedShape,
+  serializeShape,
+  verifyGameRun,
+} from './game/runVerifier';
 import {
   FriendshipRecord,
   loadFriendships,
@@ -92,6 +114,7 @@ import {
   getDailyChallenges,
   getTodayDateKey,
   createEmptyDailyProgress,
+  createDefaultStats,
   formatDuration,
 } from './game/progression';
 
@@ -204,10 +227,25 @@ export default function App() {
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState<string | null>(null);
   const [toastNotices, setToastNotices] = useState<ToastNotice[]>([]);
 
-  // Friends & Global Players State
-  const currentPlayerId = useMemo(() => getPlayerId(), []);
+  // Authentication & Cloud Sync State (Firebase Auth + Firestore)
+  const [authUser, setAuthUser] = useState<User | null>(() => getCurrentAuthUser());
+  const authUserRef = useRef<User | null>(authUser);
+  authUserRef.current = authUser;
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [hasPendingSync, setHasPendingSync] = useState<boolean>(false);
+  const hasPendingSyncRef = useRef<boolean>(false);
+  hasPendingSyncRef.current = hasPendingSync;
+  const preferencesUpdatedAtRef = useRef<number>(
+    typeof window !== 'undefined' && localStorage.getItem('creatyxo_player_profile') ? 1 : 0
+  );
+
+  // Friends & Global Players State (single authoritative cache updated via scoped listeners)
+  const guestPlayerId = useMemo(() => getGuestPlayerId(), []);
+  const currentPlayerId = authUser?.uid || guestPlayerId;
   const [friendships, setFriendships] = useState<FriendshipRecord[]>([]);
-  const [allPlayers, setAllPlayers] = useState<LeaderboardEntry[]>([]);
+  const [remoteLeaderboardRecords, setRemoteLeaderboardRecords] = useState<
+    FirestoreLeaderboardRecord[]
+  >(() => getCachedRemoteRecords());
 
   // Session Playtime Tracking
   const [sessionElapsedSec, setSessionElapsedSec] = useState<number>(0);
@@ -236,28 +274,55 @@ export default function App() {
   const activeDifficulty = getDifficultyConfig(difficultyMode);
   const boardSize = activeDifficulty.boardSize;
 
-  // Game Board State (Dynamic: 10x10, 8x8, 6x6, 4x4)
-  const [grid, setGrid] = useState<GridState>(() => {
+  // Deterministic initial board + tray shared with the move verifier
+  const initialBoardBootRef = useRef<{
+    mode: DifficultyModeId;
+    grid: GridState;
+    tray: PieceShape[];
+    runId: string;
+    startedAt: number;
+  } | null>(null);
+  if (!initialBoardBootRef.current) {
     const raw =
       typeof window !== 'undefined'
         ? localStorage.getItem('creatyxo_difficulty_mode')
         : null;
     const savedMode = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
-    const mode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
-    return createEmptyGrid(getDifficultyConfig(mode).boardSize);
+    const bootMode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
+    const bootSize = getDifficultyConfig(bootMode).boardSize;
+    const bootGrid = createEmptyGrid(bootSize);
+    const bootTray = getRandomPieces(3, bootGrid, bootMode);
+    initialBoardBootRef.current = {
+      mode: bootMode,
+      grid: bootGrid,
+      tray: bootTray,
+      runId: `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      startedAt: Date.now(),
+    };
+  }
+
+  // Move Recorder for deterministic score verification
+  const runRecorderRef = useRef<{
+    runId: string;
+    mode: DifficultyModeId;
+    startedAt: number;
+    lastMoveAt: number;
+    initialTray: RecordedShape[];
+    moves: RecordedMove[];
+  }>({
+    runId: initialBoardBootRef.current.runId,
+    mode: initialBoardBootRef.current.mode,
+    startedAt: initialBoardBootRef.current.startedAt,
+    lastMoveAt: initialBoardBootRef.current.startedAt,
+    initialTray: initialBoardBootRef.current.tray.map(serializeShape),
+    moves: [],
   });
 
+  // Game Board State (Dynamic: 10x10, 8x8, 6x6, 4x4)
+  const [grid, setGrid] = useState<GridState>(() => initialBoardBootRef.current!.grid);
+
   // Piece Tray State (3 slots)
-  const [tray, setTray] = useState<(PieceShape | null)[]>(() => {
-    const raw =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('creatyxo_difficulty_mode')
-        : null;
-    const savedMode = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
-    const mode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
-    const size = getDifficultyConfig(mode).boardSize;
-    return getRandomPieces(3, createEmptyGrid(size), mode);
-  });
+  const [tray, setTray] = useState<(PieceShape | null)[]>(() => initialBoardBootRef.current!.tray);
 
   // Score & Stats
   const [score, setScore] = useState<number>(0);
@@ -292,6 +357,15 @@ export default function App() {
   const [totalLinesCleared, setTotalLinesCleared] = useState<number>(0);
   const [maxCombo, setMaxCombo] = useState<number>(0);
   const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
+
+  const playerProfileRef = useRef<PlayerProfile>(playerProfile);
+  playerProfileRef.current = playerProfile;
+  const activeThemeIdRef = useRef<ThemeId>(activeThemeId);
+  activeThemeIdRef.current = activeThemeId;
+  const activeBlockSkinIdRef = useRef<BlockSkinId>(activeBlockSkinId);
+  activeBlockSkinIdRef.current = activeBlockSkinId;
+  const modeBestScoresRef = useRef<Record<DifficultyModeId, number>>(modeBestScores);
+  modeBestScoresRef.current = modeBestScores;
 
   // Audio States (Independent Sound FX & Chill Background Music with Loudness Adjustments)
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -440,6 +514,70 @@ export default function App() {
   const scoreRef = useRef<number>(score);
   scoreRef.current = score;
 
+  const buildCurrentSnapshot = useCallback(
+    (overrides?: Partial<CloudAccountSnapshot>): CloudAccountSnapshot => {
+      const uid = authUserRef.current?.uid || 'guest';
+      return {
+        accountKey: uid,
+        profile: overrides?.profile ?? playerProfileRef.current,
+        stats: overrides?.stats ?? playerStatsRef.current,
+        modeBestScores: overrides?.modeBestScores ?? modeBestScoresRef.current,
+        bestScore: overrides?.bestScore ?? bestScoreRef.current,
+        activeThemeId: overrides?.activeThemeId ?? activeThemeIdRef.current,
+        activeBlockSkinId: overrides?.activeBlockSkinId ?? activeBlockSkinIdRef.current,
+        preferencesUpdatedAt: overrides?.preferencesUpdatedAt ?? preferencesUpdatedAtRef.current,
+        pendingSync: overrides?.pendingSync ?? hasPendingSyncRef.current,
+      };
+    },
+    []
+  );
+
+  const applyAccountSnapshot = useCallback((snap: CloudAccountSnapshot) => {
+    playerProfileRef.current = snap.profile;
+    playerStatsRef.current = snap.stats;
+    modeBestScoresRef.current = snap.modeBestScores;
+    bestScoreRef.current = snap.bestScore;
+    activeThemeIdRef.current = snap.activeThemeId;
+    activeBlockSkinIdRef.current = snap.activeBlockSkinId;
+    preferencesUpdatedAtRef.current = snap.preferencesUpdatedAt;
+    hasPendingSyncRef.current = snap.pendingSync;
+
+    setPlayerProfile(snap.profile);
+    setPlayerStats(snap.stats);
+    setModeBestScores(snap.modeBestScores);
+    setBestScore(snap.bestScore);
+    setActiveThemeId(snap.activeThemeId);
+    setActiveBlockSkinId(snap.activeBlockSkinId);
+    setHasPendingSync(snap.pendingSync);
+    if (snap.profile.hasChosenName) {
+      setIsNameModalOpen(false);
+    }
+  }, []);
+
+  const persistSnapshotAndSync = useCallback(
+    async (overrides?: Partial<CloudAccountSnapshot>, syncCloud = false): Promise<void> => {
+      const uid = authUserRef.current?.uid || null;
+      const snapshot = buildCurrentSnapshot({
+        ...overrides,
+        pendingSync: Boolean(uid && (syncCloud || hasPendingSyncRef.current)),
+      });
+      saveLocalAccountSnapshot(snapshot);
+      if (!uid || !syncCloud) return;
+
+      setIsSyncingCloud(true);
+      try {
+        const { merged, synced } = await syncAccountWithCloud(uid, snapshot);
+        applyAccountSnapshot(merged);
+        if (!synced) {
+          setHasPendingSync(true);
+        }
+      } finally {
+        setIsSyncingCloud(false);
+      }
+    },
+    [buildCurrentSnapshot, applyAccountSnapshot]
+  );
+
   const commitStatsUpdate = useCallback(
     (updater: (prev: PlayerStats) => PlayerStats, bestScoreOverride?: number): PlayerStats => {
       const prev = playerStatsRef.current;
@@ -469,7 +607,7 @@ export default function App() {
     [hapticsEnabled, pushToast, displayTheme.accentHex]
   );
 
-  // Daily Streak Welcome Toast + Skin Unlock Celebration + Initial Sync
+  // Daily Streak Welcome Toast + Skin Unlock Celebration (no boot cloud overwrite!)
   useEffect(() => {
     const boot = initialBootRef.current;
     if (boot?.newDayCheckIn) {
@@ -496,7 +634,77 @@ export default function App() {
     }
   }, []);
 
-  // Active Gameplay Timer (ticks 1s while actively playing)
+  // Auth lifecycle: pull cloud save BEFORE pushing, merge conflict-free, and flush offline pending syncs
+  useEffect(() => {
+    let cancelled = false;
+    const unsubAuth = subscribeToAuthChanges(async (user) => {
+      if (cancelled) return;
+      authUserRef.current = user;
+      setAuthUser(user);
+
+      if (user) {
+        setIsSyncingCloud(true);
+        try {
+          const cachedUserSnap = loadLocalAccountSnapshot(user.uid);
+          const guestSnap =
+            loadLocalAccountSnapshot('guest') ||
+            (() => {
+              const legacy = loadLegacyLocalSnapshot();
+              return legacy ? { accountKey: 'guest', ...legacy, pendingSync: false } : null;
+            })();
+
+          const candidateLocal: CloudAccountSnapshot =
+            cachedUserSnap ||
+            (guestSnap
+              ? { ...guestSnap, accountKey: user.uid, pendingSync: true }
+              : buildCurrentSnapshot({ accountKey: user.uid, pendingSync: false }));
+
+          const { merged, synced } = await syncAccountWithCloud(user.uid, candidateLocal);
+          if (!cancelled) {
+            applyAccountSnapshot(merged);
+            setHasPendingSync(!synced);
+          }
+        } finally {
+          if (!cancelled) setIsSyncingCloud(false);
+        }
+      } else {
+        setFriendships([]);
+        const guestSnap = loadLocalAccountSnapshot('guest');
+        if (guestSnap) {
+          applyAccountSnapshot(guestSnap);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubAuth();
+    };
+  }, [applyAccountSnapshot, buildCurrentSnapshot]);
+
+  // Flush queued offline sync automatically when network returns
+  useEffect(() => {
+    const flushIfNeeded = () => {
+      const uid = authUserRef.current?.uid;
+      if (!uid || !hasPendingSyncRef.current) return;
+      persistSnapshotAndSync(undefined, true).catch(() => {});
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        flushIfNeeded();
+      }
+    };
+
+    window.addEventListener('online', flushIfNeeded);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('online', flushIfNeeded);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [persistSnapshotAndSync]);
+
+  // Active Gameplay Timer (ticks 1s locally — ZERO Firestore reads or writes on tick!)
   useEffect(() => {
     if (activeScreen !== 'game' || isPaused || isGameOver) return;
 
@@ -521,19 +729,11 @@ export default function App() {
       triggerHaptic('tap', hapticsEnabled);
       setPreviewThemeId(null);
       setActiveThemeId(themeId);
-      try {
-        localStorage.setItem('creatyxo_active_theme', themeId);
-      } catch {
-        // ignore
-      }
-      savePlayerToLeaderboard(
-        playerProfile,
-        bestScoreRef.current,
-        playerStatsRef.current,
-        themeId
-      ).catch(() => {});
+      activeThemeIdRef.current = themeId;
+      preferencesUpdatedAtRef.current = Date.now();
+      persistSnapshotAndSync({ activeThemeId: themeId, preferencesUpdatedAt: preferencesUpdatedAtRef.current }, true).catch(() => {});
     },
-    [hapticsEnabled, playerProfile]
+    [hapticsEnabled, persistSnapshotAndSync]
   );
 
   const handlePreviewTheme = useCallback(
@@ -553,13 +753,11 @@ export default function App() {
       triggerHaptic('tap', hapticsEnabled);
       setPreviewBlockSkinId(null);
       setActiveBlockSkinId(skinId);
-      try {
-        localStorage.setItem('creatyxo_active_block_skin', skinId);
-      } catch {
-        // ignore
-      }
+      activeBlockSkinIdRef.current = skinId;
+      preferencesUpdatedAtRef.current = Date.now();
+      persistSnapshotAndSync({ activeBlockSkinId: skinId, preferencesUpdatedAt: preferencesUpdatedAtRef.current }, true).catch(() => {});
     },
-    [hapticsEnabled]
+    [hapticsEnabled, persistSnapshotAndSync]
   );
 
   const handlePreviewBlockSkin = useCallback(
@@ -609,14 +807,9 @@ export default function App() {
         displayTheme.accentHex
       );
 
-      savePlayerToLeaderboard(
-        playerProfile,
-        bestScoreRef.current,
-        nextStats,
-        activeThemeId
-      ).catch(() => {});
+      persistSnapshotAndSync({ stats: nextStats }, true).catch(() => {});
     },
-    [hapticsEnabled, soundEnabled, commitStatsUpdate, pushToast, displayTheme.accentHex, playerProfile, activeThemeId]
+    [hapticsEnabled, soundEnabled, commitStatsUpdate, pushToast, displayTheme.accentHex, persistSnapshotAndSync]
   );
 
   const unclaimedDailyCount = useMemo(() => {
@@ -633,14 +826,53 @@ export default function App() {
 
   const savePlayerProfile = (profile: PlayerProfile) => {
     setPlayerProfile(profile);
+    playerProfileRef.current = profile;
+    preferencesUpdatedAtRef.current = Date.now();
     setIsNameModalOpen(false);
-    try {
-      localStorage.setItem('creatyxo_player_profile', JSON.stringify(profile));
-      savePlayerToLeaderboard(profile, bestScore, playerStatsRef.current, activeThemeId);
-    } catch {
-      // ignore
-    }
+    persistSnapshotAndSync(
+      { profile, preferencesUpdatedAt: preferencesUpdatedAtRef.current },
+      true
+    ).catch(() => {});
   };
+
+  const handleSignInGoogle = useCallback(async () => {
+    triggerHaptic('tap', hapticsEnabled);
+    try {
+      await signInWithGoogle();
+      pushToast(
+        'CLOUD ACCOUNT LINKED',
+        'Profile, achievements, streaks & friends synced!',
+        '#34d399'
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google Sign-In could not complete.';
+      if (!message.includes('popup-closed-by-user')) {
+        pushToast('SIGN-IN NOTICE', 'Please allow the Google sign-in popup and try again.', '#fbbf24');
+      }
+    }
+  }, [hapticsEnabled, pushToast]);
+
+  const handleSignOut = useCallback(async () => {
+    triggerHaptic('tap', hapticsEnabled);
+    await persistSnapshotAndSync(undefined, true).catch(() => {});
+    await signOutPlayer();
+    setIsMyProfileOpen(false);
+    setIsFriendsOpen(false);
+    setFriendships([]);
+    const guestDefaults: CloudAccountSnapshot = loadLocalAccountSnapshot('guest') || {
+      accountKey: 'guest',
+      profile: playerProfileRef.current,
+      stats: createDefaultStats(),
+      modeBestScores: { easy: 0, classic: 0, hard: 0, extreme: 0 },
+      bestScore: 0,
+      activeThemeId: 'cyber-neon',
+      activeBlockSkinId: 'classic-gloss',
+      preferencesUpdatedAt: 0,
+      pendingSync: false,
+    };
+    applyAccountSnapshot(guestDefaults);
+    pushToast('SIGNED OUT', 'Switched to local guest session.', '#94a3b8');
+  }, [hapticsEnabled, persistSnapshotAndSync, applyAccountSnapshot, pushToast]);
 
   // Toggle Background Music
   const toggleMusic = useCallback(() => {
@@ -673,10 +905,14 @@ export default function App() {
     });
   }, []);
 
-  // Sync per-mode best score and overall global best score
+  // Update live UI high-score badges locally during a run (cloud sync waits for verified finalizeCurrentRun)
   useEffect(() => {
     if (score > modeBestScore) {
-      setModeBestScores((prev) => ({ ...prev, [difficultyMode]: score }));
+      setModeBestScores((prev) => {
+        const next = { ...prev, [difficultyMode]: score };
+        modeBestScoresRef.current = next;
+        return next;
+      });
       setIsNewRecord(true);
       try {
         localStorage.setItem(`creatyxo_best_score_${difficultyMode}`, score.toString());
@@ -687,64 +923,77 @@ export default function App() {
 
     if (score > bestScore) {
       setBestScore(score);
+      bestScoreRef.current = score;
       try {
         localStorage.setItem('creatyxo_best_score', score.toString());
-        savePlayerToLeaderboard(playerProfile, score, playerStatsRef.current, activeThemeId).catch(() => {});
       } catch {
         // Ignore
       }
     }
-  }, [score, bestScore, modeBestScore, difficultyMode, playerProfile, activeThemeId]);
+  }, [score, bestScore, modeBestScore, difficultyMode]);
 
-  // Initial sync: Ensure any existing best score & stats are pushed to the global leaderboard
-  useEffect(() => {
-    savePlayerToLeaderboard(playerProfile, bestScore, playerStatsRef.current, activeThemeId).catch(() => {});
+  // One-time cached leaderboard fetch on mount (respects 60s TTL; zero per-second churn)
+  const refreshLeaderboardFromFirestore = useCallback(async () => {
+    const records = await fetchSharedLeaderboardRecords(true, 50);
+    setRemoteLeaderboardRecords(records);
   }, []);
 
-  // Compute player global rank & live players list from shared leaderboard
-  const [userRank, setUserRank] = useState<number>(() => {
-    return buildLeaderboard(playerProfile, bestScore, playerStats, activeThemeId).userRank;
-  });
-
-  const refreshGlobalPlayers = useCallback(() => {
-    fetchSharedLeaderboard(playerProfile, bestScore, playerStats, activeThemeId)
-      .then((data) => {
-        if (data && typeof data.userRank === 'number') {
-          setUserRank(data.userRank);
-        }
-        if (data && Array.isArray(data.list)) {
-          setAllPlayers(data.list);
-        }
+  useEffect(() => {
+    fetchSharedLeaderboardRecords(false, 50)
+      .then((records) => {
+        if (records.length > 0) setRemoteLeaderboardRecords(records);
       })
       .catch(() => {});
-  }, [playerProfile, bestScore, playerStats, activeThemeId]);
+  }, []);
+
+  // Attach real-time leaderboard listener ONLY while social screens/modals are open
+  const isLeaderboardListenerActive =
+    activeScreen === 'ranking' || isFriendsOpen || selectedPlayerProfileId !== null;
 
   useEffect(() => {
-    refreshGlobalPlayers();
-    const unsub = subscribeToLeaderboardUpdates(() => {
-      refreshGlobalPlayers();
-    });
+    if (!isLeaderboardListenerActive) return;
+    const unsub = subscribeToLeaderboardRecords((records) => {
+      setRemoteLeaderboardRecords(records);
+    }, 50);
     return () => {
       unsub();
     };
-  }, [refreshGlobalPlayers]);
+  }, [isLeaderboardListenerActive]);
 
-  // Friendships real-time sync
+  // Compute allPlayers, userRank & myLeaderboardEntry synchronously in memory (ZERO Firestore reads!)
+  const { list: allPlayers, userRank, userEntry: myLeaderboardEntry } = useMemo(
+    () =>
+      mergeUserIntoLeaderboard(
+        remoteLeaderboardRecords,
+        playerProfile,
+        bestScore,
+        playerStats,
+        activeThemeId,
+        currentPlayerId
+      ),
+    [remoteLeaderboardRecords, playerProfile, bestScore, playerStats, activeThemeId, currentPlayerId]
+  );
+
+  // Scoped real-time friendships sync — strictly gated on authenticated Firebase UID
   const refreshFriendshipsList = useCallback(() => {
-    loadFriendships(currentPlayerId)
+    if (!authUserRef.current?.uid) return;
+    loadFriendships(authUserRef.current.uid)
       .then((list) => setFriendships(list))
       .catch(() => {});
-  }, [currentPlayerId]);
+  }, []);
 
   useEffect(() => {
-    refreshFriendshipsList();
-    const unsub = listenToFriendships(currentPlayerId, (list) => {
+    if (!authUser?.uid) {
+      setFriendships([]);
+      return;
+    }
+    const unsub = listenToFriendships(authUser.uid, (list) => {
       setFriendships(list);
     });
     return () => {
       unsub();
     };
-  }, [currentPlayerId, refreshFriendshipsList]);
+  }, [authUser?.uid]);
 
   const acceptedFriendCount = useMemo(
     () => friendships.filter((f) => f.status === 'accepted').length,
@@ -761,10 +1010,15 @@ export default function App() {
 
   const handleSendFriendRequest = useCallback(
     async (target: LeaderboardEntry) => {
+      if (!authUserRef.current?.uid) {
+        pushToast('SIGN IN REQUIRED', 'Sign in with Google to add friends.', '#fbbf24');
+        return;
+      }
+      if (target.isBenchmark || target.id.startsWith('bot_')) return;
       triggerHaptic('tap', hapticsEnabled);
       const ok = await sendFriendRequest(
-        currentPlayerId,
-        playerProfile.username,
+        authUserRef.current.uid,
+        playerProfileRef.current.username,
         target.id,
         target.username
       );
@@ -783,7 +1037,7 @@ export default function App() {
         );
       }
     },
-    [currentPlayerId, playerProfile.username, hapticsEnabled, refreshFriendshipsList, pushToast, displayTheme.accentHex]
+    [hapticsEnabled, refreshFriendshipsList, pushToast, displayTheme.accentHex]
   );
 
   const handleAcceptFriendRequest = useCallback(
@@ -827,12 +1081,45 @@ export default function App() {
       if (!hasPlacedInSessionRef.current || sessionFinalizedRef.current) return;
       sessionFinalizedRef.current = true;
 
+      const recordedRun: RecordedGameRun = {
+        runId: runRecorderRef.current.runId,
+        mode: runRecorderRef.current.mode,
+        startedAt: runRecorderRef.current.startedAt,
+        endedAt: Date.now(),
+        claimedScore: scoreRef.current,
+        initialTray: runRecorderRef.current.initialTray,
+        moves: [...runRecorderRef.current.moves],
+      };
+
+      const localVerification = verifyGameRun(recordedRun);
+      if (!localVerification.valid) {
+        console.warn('Run verification rejected:', localVerification.reason);
+        pushToast(
+          'RUN NOT VERIFIED',
+          'Only authentic gameplay scores are saved.',
+          '#fb7185'
+        );
+        return;
+      }
+
+      const verifiedScore = localVerification.summary.verifiedScore;
+      const runMode = localVerification.summary.mode;
       const todayKey = getTodayDateKey();
       const todayChallenges = getDailyChallenges(todayKey);
       const featuredChallenge = todayChallenges.find((c) => c.metric === 'featuredGamesToday');
       const isFeaturedMode =
         Boolean(featuredChallenge?.featuredMode) &&
-        featuredChallenge?.featuredMode === difficultyMode;
+        featuredChallenge?.featuredMode === runMode;
+
+      const updatedModes: Record<DifficultyModeId, number> = {
+        ...modeBestScoresRef.current,
+        [runMode]: Math.max(modeBestScoresRef.current[runMode] || 0, verifiedScore),
+      };
+      const updatedBest = Math.max(bestScoreRef.current, ...Object.values(updatedModes));
+      modeBestScoresRef.current = updatedModes;
+      bestScoreRef.current = updatedBest;
+      setModeBestScores(updatedModes);
+      setBestScore(updatedBest);
 
       const nextStats = commitStatsUpdate((prev) => {
         const daily =
@@ -850,16 +1137,37 @@ export default function App() {
             featuredGamesToday: daily.featuredGamesToday + (isFeaturedMode ? 1 : 0),
           },
         };
-      }, scoreRef.current);
+      }, verifiedScore);
 
-      savePlayerToLeaderboard(
-        playerProfile,
-        Math.max(bestScoreRef.current, scoreRef.current),
-        nextStats,
-        activeThemeId
-      ).catch(() => {});
+      // Save locally right away; verify via backend when available before publishing to cloud
+      const snapshotPayload: Partial<CloudAccountSnapshot> = {
+        stats: nextStats,
+        modeBestScores: updatedModes,
+        bestScore: updatedBest,
+      };
+
+      (async () => {
+        try {
+          const res = await fetch('/api/runs/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(recordedRun),
+          });
+          if (res.status === 422) {
+            pushToast(
+              'RUN VERIFICATION FAILED',
+              'Server rejected mismatched run replay.',
+              '#fb7185'
+            );
+            return;
+          }
+        } catch {
+          // Static hosting or offline: deterministic local replay already verified
+        }
+        await persistSnapshotAndSync(snapshotPayload, true);
+      })().catch(() => {});
     },
-    [difficultyMode, commitStatsUpdate, playerProfile, activeThemeId]
+    [commitStatsUpdate, persistSnapshotAndSync, pushToast]
   );
 
   // Restart / Reset game for active (or specified) difficulty mode
@@ -871,12 +1179,22 @@ export default function App() {
       const cfg = getDifficultyConfig(modeToUse);
       const empty = createEmptyGrid(cfg.boardSize);
       const freshTray = getRandomPieces(3, empty, modeToUse);
+      const now = Date.now();
+      runRecorderRef.current = {
+        runId: `run_${now}_${Math.random().toString(36).slice(2, 8)}`,
+        mode: modeToUse,
+        startedAt: now,
+        lastMoveAt: now,
+        initialTray: freshTray.map(serializeShape),
+        moves: [],
+      };
       gridRef.current = empty;
       trayRef.current = freshTray;
       draggingRef.current = null;
       setGrid(empty);
       setTray(freshTray);
       setScore(0);
+      scoreRef.current = 0;
       setCombo(0);
       setTotalLinesCleared(0);
       setMaxCombo(0);
@@ -1304,6 +1622,7 @@ export default function App() {
 
         // Update XP, achievement progress, and daily challenge stats
         const projectedRunScore = scoreRef.current + totalPointsGained;
+        scoreRef.current = projectedRunScore;
         const xpGained =
           placedBlockCount * 2 +
           linesCleared * 20 +
@@ -1344,9 +1663,25 @@ export default function App() {
         // If tray is empty, spawn 3 new mode-compatible pieces that fit on the board
         const remainingPieces = nextTray.filter((p): p is PieceShape => p !== null);
         let finalTray = nextTray;
+        let spawnedTray: RecordedShape[] | undefined;
         if (remainingPieces.length === 0) {
           finalTray = getRandomPieces(3, newGrid, difficultyMode);
+          spawnedTray = finalTray
+            .filter((p): p is PieceShape => p !== null)
+            .map(serializeShape);
         }
+
+        // Record deterministic move for run/score verification
+        const now = Date.now();
+        const dtMs = Math.max(0, now - runRecorderRef.current.lastMoveAt);
+        runRecorderRef.current.lastMoveAt = now;
+        runRecorderRef.current.moves.push({
+          trayIndex,
+          row: targetR,
+          col: targetC,
+          dtMs,
+          ...(spawnedTray ? { spawnedTray } : {}),
+        });
 
         // Sync refs immediately alongside React state so rapid moves never read stale grid/tray
         gridRef.current = newGrid;
@@ -1537,11 +1872,6 @@ export default function App() {
     );
   };
 
-  const myLeaderboardEntry = useMemo(
-    () => buildLeaderboard(playerProfile, bestScore, playerStats, activeThemeId).userEntry,
-    [playerProfile, bestScore, playerStats, activeThemeId]
-  );
-
   const selectedProfileEntry = useMemo(() => {
     if (isMyProfileOpen) return myLeaderboardEntry;
     if (selectedPlayerProfileId) {
@@ -1577,6 +1907,8 @@ export default function App() {
         onSave={savePlayerProfile}
         onClose={() => setIsNameModalOpen(false)}
         isInitialSetup={!playerProfile.hasChosenName}
+        isSignedIn={Boolean(authUser)}
+        onSignInGoogle={handleSignInGoogle}
       />
 
       {/* Audio Settings & Haptics Modal */}
@@ -1670,10 +2002,12 @@ export default function App() {
       {/* Friends & Mutual Requests Modal */}
       <FriendsModal
         isOpen={isFriendsOpen}
+        isSignedIn={Boolean(authUser)}
         currentPlayerId={currentPlayerId}
         allPlayers={allPlayers}
         friendships={friendships}
         activeTheme={displayTheme}
+        onSignInGoogle={handleSignInGoogle}
         onSendRequest={handleSendFriendRequest}
         onAcceptRequest={handleAcceptFriendRequest}
         onDeclineRequest={handleDeclineFriendRequest}
@@ -1689,6 +2023,11 @@ export default function App() {
         activeTheme={displayTheme}
         currentPlayerId={currentPlayerId}
         friendships={friendships}
+        isSignedIn={Boolean(authUser)}
+        authEmail={authUser?.email}
+        hasPendingSync={hasPendingSync}
+        onSignInGoogle={handleSignInGoogle}
+        onSignOut={handleSignOut}
         onEditName={() => setIsNameModalOpen(true)}
         onSendFriendRequest={handleSendFriendRequest}
         onAcceptFriendRequest={handleAcceptFriendRequest}
@@ -1748,6 +2087,10 @@ export default function App() {
             unclaimedDailyCount={unclaimedDailyCount}
             friendCount={acceptedFriendCount}
             incomingFriendRequests={incomingFriendRequestsCount}
+            isSignedIn={Boolean(authUser)}
+            hasPendingSync={hasPendingSync}
+            isSyncingCloud={isSyncingCloud}
+            onSignInGoogle={handleSignInGoogle}
             onOpenAudioSettings={() => setIsAudioSettingsOpen(true)}
             onSelectDifficulty={handleSelectDifficulty}
             onStartGame={handleStartGame}
@@ -1767,13 +2110,17 @@ export default function App() {
         {/* VIEW 2: LEADERBOARD SCREEN */}
         {activeScreen === 'ranking' && (
           <LeaderboardScreen
-            playerProfile={playerProfile}
-            bestScore={bestScore}
+            entries={allPlayers}
+            userRank={userRank}
+            userEntry={myLeaderboardEntry}
+            currentPlayerId={currentPlayerId}
             playerStats={playerStats}
             activeTheme={displayTheme}
-            equippedThemeId={activeThemeId}
             friendships={friendships}
             incomingFriendRequests={incomingFriendRequestsCount}
+            isSignedIn={Boolean(authUser)}
+            onSignInGoogle={handleSignInGoogle}
+            onRefreshLeaderboard={refreshLeaderboardFromFirestore}
             onBack={() => setActiveScreen(previousScreen)}
             onPlayGame={() => setActiveScreen('game')}
             onOpenNameModal={() => setIsNameModalOpen(true)}

@@ -3,16 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  PlayerProfile,
   LeaderboardEntry,
-  buildLeaderboard,
-  fetchSharedLeaderboard,
-  subscribeToLeaderboardUpdates,
   isFirestoreOnline,
   getTierBadgeStyle,
-  getPlayerId,
 } from '../game/leaderboard';
 import { FriendshipRecord } from '../game/friends';
 import { PlayerStats, getLevelInfo } from '../game/progression';
@@ -21,13 +16,17 @@ import { PlayerProfileModal } from './PlayerProfileModal';
 import { PlayerAvatar } from './PlayerAvatar';
 
 interface LeaderboardScreenProps {
-  playerProfile: PlayerProfile;
-  bestScore: number;
+  entries: LeaderboardEntry[];
+  userRank: number;
+  userEntry: LeaderboardEntry;
+  currentPlayerId: string;
   playerStats: PlayerStats;
   activeTheme: GameTheme;
-  equippedThemeId: string;
   friendships: FriendshipRecord[];
   incomingFriendRequests: number;
+  isSignedIn: boolean;
+  onSignInGoogle: () => void;
+  onRefreshLeaderboard: () => Promise<void> | void;
   onBack: () => void;
   onPlayGame: () => void;
   onOpenNameModal?: () => void;
@@ -39,13 +38,17 @@ interface LeaderboardScreenProps {
 }
 
 export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
-  playerProfile,
-  bestScore,
+  entries,
+  userRank,
+  userEntry,
+  currentPlayerId,
   playerStats,
   activeTheme,
-  equippedThemeId,
   friendships,
   incomingFriendRequests,
+  isSignedIn,
+  onSignInGoogle,
+  onRefreshLeaderboard,
   onBack,
   onPlayGame,
   onOpenNameModal,
@@ -57,45 +60,19 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isOnline, setIsOnline] = useState(() => isFirestoreOnline());
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
-  const currentPlayerId = useMemo(() => getPlayerId(), []);
+  const isOnline = isFirestoreOnline();
 
-  // Synchronous initial fallback so UI renders instantaneously
-  const [leaderboardData, setLeaderboardData] = useState(() => {
-    return buildLeaderboard(playerProfile, bestScore, playerStats, equippedThemeId);
-  });
-
-  const refreshSharedBoard = useCallback(async () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const data = await fetchSharedLeaderboard(
-        playerProfile,
-        bestScore,
-        playerStats,
-        equippedThemeId
-      );
-      setLeaderboardData(data);
-      setIsOnline(isFirestoreOnline());
-    } catch {
-      // Keep existing data
+      await onRefreshLeaderboard();
     } finally {
       setIsRefreshing(false);
     }
-  }, [playerProfile, bestScore, playerStats, equippedThemeId]);
+  };
 
-  // Fetch live shared leaderboard on mount and subscribe to real-time updates
-  useEffect(() => {
-    refreshSharedBoard();
-    const unsubscribe = subscribeToLeaderboardUpdates(() => {
-      refreshSharedBoard();
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [refreshSharedBoard]);
-
-  const { list, userRank, userEntry } = leaderboardData;
+  const list = entries;
 
   const selectedPlayer = useMemo(() => {
     if (!selectedPlayerId) return null;
@@ -134,6 +111,8 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
         activeTheme={activeTheme}
         currentPlayerId={currentPlayerId}
         friendships={friendships}
+        isSignedIn={isSignedIn}
+        onSignInGoogle={onSignInGoogle}
         onEditName={onOpenNameModal}
         onSendFriendRequest={onSendFriendRequest}
         onAcceptFriendRequest={onAcceptFriendRequest}
@@ -163,7 +142,7 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
             </h2>
             <button
               type="button"
-              onClick={refreshSharedBoard}
+              onClick={handleRefresh}
               disabled={isRefreshing}
               style={{ margin: 4, color: activeTheme.accentHex }}
               title="Refresh shared records from global database"
@@ -209,6 +188,35 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           <div className="w-16 mr-2" />
         )}
       </header>
+
+      {!isSignedIn && (
+        <div
+          style={{
+            marginLeft: 10,
+            marginRight: 10,
+            marginTop: 8,
+            backgroundColor: activeTheme.surfaceBg,
+            borderColor: activeTheme.surfaceBorder,
+          }}
+          className="shrink-0 px-3 py-2 rounded-xl border flex items-center justify-between gap-2"
+        >
+          <span className="ml-[6px] text-[8.5px] font-bold text-slate-300 font-['Orbitron',sans-serif] leading-tight text-left">
+            SIGN IN WITH GOOGLE TO PUBLISH YOUR SCORES GLOBALLY
+          </span>
+          <button
+            type="button"
+            onClick={onSignInGoogle}
+            style={{
+              margin: 0,
+              backgroundColor: activeTheme.primaryBtnBg,
+              color: activeTheme.primaryBtnText,
+            }}
+            className="px-2.5 py-1.5 rounded-lg text-[8.5px] font-black font-['Orbitron',sans-serif] tracking-wider cursor-pointer shrink-0"
+          >
+            SIGN IN
+          </button>
+        </div>
+      )}
 
       {/* 2. Your Rank Summary Card (Clickable to open own full stats profile) */}
       <div
@@ -272,7 +280,7 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-col items-end shrink-0 pl-2">
+        <div className="flex flex-col items-end shrink-0 pl-0 ml-0 mr-[6px]">
           <span className="text-[9px] font-bold text-slate-400 font-['Orbitron',sans-serif]">
             RANK
           </span>

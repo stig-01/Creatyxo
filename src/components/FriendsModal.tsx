@@ -11,10 +11,12 @@ import { PlayerAvatar } from './PlayerAvatar';
 
 interface FriendsModalProps {
   isOpen: boolean;
+  isSignedIn: boolean;
   currentPlayerId: string;
   allPlayers: LeaderboardEntry[];
   friendships: FriendshipRecord[];
   activeTheme: GameTheme;
+  onSignInGoogle: () => void;
   onSendRequest: (target: LeaderboardEntry) => void;
   onAcceptRequest: (friendshipId: string) => void;
   onDeclineRequest: (friendshipId: string) => void;
@@ -27,10 +29,12 @@ type FriendsTab = 'friends' | 'requests' | 'find';
 
 export const FriendsModal: React.FC<FriendsModalProps> = ({
   isOpen,
+  isSignedIn,
   currentPlayerId,
   allPlayers,
   friendships,
   activeTheme,
+  onSignInGoogle,
   onSendRequest,
   onAcceptRequest,
   onDeclineRequest,
@@ -81,7 +85,9 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
   const discoverablePlayers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return allPlayers.filter((p) => {
-      if (p.id === currentPlayerId || p.isCurrentUser) return false;
+      if (p.id === currentPlayerId || p.isCurrentUser || p.isBenchmark || p.id.startsWith('bot_')) {
+        return false;
+      }
       if (!q) return true;
       const full = `${p.username}${p.tag ? `#${p.tag}` : ''}`.toLowerCase();
       return p.username.toLowerCase().includes(q) || full.includes(q);
@@ -115,8 +121,9 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
               FRIENDS & REQUESTS
             </h2>
             <p className="text-[9.5px] text-slate-400 font-['Orbitron',sans-serif] mt-0.5">
-              {accepted.length} {accepted.length === 1 ? 'FRIEND' : 'FRIENDS'} •{' '}
-              {incomingPending.length} INCOMING
+              {isSignedIn
+                ? `${accepted.length} ${accepted.length === 1 ? 'FRIEND' : 'FRIENDS'} • ${incomingPending.length} INCOMING`
+                : 'SIGN IN TO SYNC FRIENDS ACROSS DEVICES'}
             </p>
           </div>
 
@@ -131,6 +138,30 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
           </button>
         </div>
 
+        {!isSignedIn ? (
+          <div className="py-8 px-3 flex flex-col items-center justify-center text-center gap-3">
+            <span className="text-xs font-black text-white font-['Orbitron',sans-serif]">
+              ACCOUNT SIGN-IN REQUIRED
+            </span>
+            <p className="text-[10px] text-slate-400 font-['Orbitron',sans-serif] leading-relaxed max-w-[260px]">
+              Sign in with Google so your friends list, friend requests, and achievements carry safely across every device.
+            </p>
+            <button
+              type="button"
+              onClick={onSignInGoogle}
+              style={{
+                margin: 0,
+                backgroundColor: activeTheme.primaryBtnBg,
+                color: activeTheme.primaryBtnText,
+                boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
+              }}
+              className="btn-creatyxo px-5 rounded-xl font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
+            >
+              SIGN IN WITH GOOGLE
+            </button>
+          </div>
+        ) : (
+          <>
         {/* Tab Switcher */}
         <div className="grid grid-cols-3 gap-1.5 shrink-0">
           <button
@@ -539,6 +570,8 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
             </>
           )}
         </div>
+          </>
+        )}
 
         {/* Footer Button */}
         <button

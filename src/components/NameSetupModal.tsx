@@ -17,6 +17,8 @@ interface NameSetupModalProps {
   onSave: (profile: PlayerProfile) => void;
   onClose?: () => void;
   isInitialSetup?: boolean;
+  isSignedIn?: boolean;
+  onSignInGoogle?: () => void;
 }
 
 export const NameSetupModal: React.FC<NameSetupModalProps> = ({
@@ -26,6 +28,8 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
   onSave,
   onClose,
   isInitialSetup = false,
+  isSignedIn = false,
+  onSignInGoogle,
 }) => {
   const [username, setUsername] = useState(currentProfile.username || '');
   const [tag, setTag] = useState(currentProfile.tag || '');
@@ -243,6 +247,22 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
         >
           ROLL RANDOM NAME
         </button>
+
+        {!isSignedIn && onSignInGoogle && (
+          <button
+            type="button"
+            onClick={onSignInGoogle}
+            style={{
+              margin: 0,
+              borderColor: activeTheme.accentHex,
+              color: activeTheme.accentHex,
+              backgroundColor: '#111a2c',
+            }}
+            className="btn-creatyxo w-full rounded-xl border text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer hover:brightness-110 active:scale-95"
+          >
+            SIGN IN / RESTORE WITH GOOGLE
+          </button>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2.5 pt-1">

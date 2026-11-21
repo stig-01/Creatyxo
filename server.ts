@@ -79,7 +79,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Creatyxo server running on port ${PORT} (authoritative backend: Firebase)`);
+    console.log(`Klick server running on port ${PORT} (authoritative backend: Firebase)`);
   });
 }
 

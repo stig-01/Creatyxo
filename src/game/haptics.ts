@@ -49,7 +49,7 @@ function triggerIosSwitchFallback(): void {
 
   try {
     if (!iosSwitchLabel) {
-      const id = 'creatyxo-haptic-switch';
+      const id = 'klick-haptic-switch';
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.id = id;

@@ -177,7 +177,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
           </div>
 
           <h2 className="text-lg font-bold text-white font-['Orbitron',sans-serif] tracking-wider">
-            {isInitialSetup ? 'WELCOME TO CREATYXO' : 'EDIT NAME'}
+            {isInitialSetup ? 'WELCOME TO KLICK' : 'EDIT NAME'}
           </h2>
 
           <p className="text-xs text-slate-400 font-['Orbitron',sans-serif] max-w-[270px] leading-relaxed">
@@ -245,7 +245,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
-          className="btn-creatyxo w-full rounded-xl border text-slate-200 hover:text-white text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer active:scale-95"
+          className="btn-klick w-full rounded-xl border text-slate-200 hover:text-white text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer active:scale-95"
         >
           ROLL RANDOM NAME
         </button>
@@ -261,7 +261,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
                 color: activeTheme.accentHex,
                 backgroundColor: '#111a2c',
               }}
-              className="btn-creatyxo w-full rounded-xl border text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer hover:brightness-110 active:scale-95"
+              className="btn-klick w-full rounded-xl border text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer hover:brightness-110 active:scale-95"
             >
               SIGN IN / RESTORE WITH GOOGLE
             </button>
@@ -282,7 +282,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
               color: activeTheme.primaryBtnText,
               boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
             }}
-            className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+            className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
           >
             CONFIRM NAME
           </button>
@@ -292,7 +292,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
               type="button"
               onClick={handleSkip}
               style={{ margin: 0 }}
-              className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
+              className="btn-klick w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
             >
               SKIP FOR NOW
             </button>
@@ -302,7 +302,7 @@ export const NameSetupModal: React.FC<NameSetupModalProps> = ({
                 type="button"
                 onClick={onClose}
                 style={{ margin: 0 }}
-                className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
+                className="btn-klick w-full rounded-xl bg-transparent hover:bg-white/5 border border-transparent hover:border-white/10 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-wider font-['Orbitron',sans-serif] transition-all cursor-pointer"
               >
                 CANCEL
               </button>

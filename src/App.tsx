@@ -145,7 +145,7 @@ export default function App() {
   // Player Profile State (custom names have NO numbers; rolled names do)
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_player_profile');
+      const saved = localStorage.getItem('klick_player_profile');
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -166,7 +166,7 @@ export default function App() {
   // Name setup modal state (opens on first visit if no name chosen yet)
   const [isNameModalOpen, setIsNameModalOpen] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_player_profile');
+      const saved = localStorage.getItem('klick_player_profile');
       if (!saved) return true;
       try {
         const parsed = JSON.parse(saved);
@@ -190,7 +190,7 @@ export default function App() {
   // Theme State (Starter + Achievement-Unlocked Themes)
   const [activeThemeId, setActiveThemeId] = useState<ThemeId>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_active_theme') as ThemeId | null;
+      const saved = localStorage.getItem('klick_active_theme') as ThemeId | null;
       if (saved && saved in GAME_THEMES) {
         if (isThemeUnlocked(saved, initialBootRef.current!.stats.unlockedAchievements)) {
           return saved;
@@ -206,7 +206,7 @@ export default function App() {
   // Cosmetic Block Skin State (Starter + 3/7/14-Day Streak Rewards)
   const [activeBlockSkinId, setActiveBlockSkinId] = useState<BlockSkinId>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_active_block_skin') as BlockSkinId | null;
+      const saved = localStorage.getItem('klick_active_block_skin') as BlockSkinId | null;
       const bootStats = initialBootRef.current!.stats;
       const bestStreak = Math.max(bootStats.dailyStreak, bootStats.bestDailyStreak);
       if (
@@ -241,7 +241,7 @@ export default function App() {
   const hasPendingSyncRef = useRef<boolean>(false);
   hasPendingSyncRef.current = hasPendingSync;
   const preferencesUpdatedAtRef = useRef<number>(
-    typeof window !== 'undefined' && localStorage.getItem('creatyxo_player_profile') ? 1 : 0
+    typeof window !== 'undefined' && localStorage.getItem('klick_player_profile') ? 1 : 0
   );
 
   // Friends & Global Players State (single authoritative cache updated via scoped listeners)
@@ -270,7 +270,7 @@ export default function App() {
   // Difficulty Mode & Board Size State
   const [difficultyMode, setDifficultyMode] = useState<DifficultyModeId>(() => {
     if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem('creatyxo_difficulty_mode');
+      const raw = localStorage.getItem('klick_difficulty_mode');
       const saved = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
       if (saved && saved in DIFFICULTY_MODES) return saved;
     }
@@ -291,7 +291,7 @@ export default function App() {
   if (!initialBoardBootRef.current) {
     const raw =
       typeof window !== 'undefined'
-        ? localStorage.getItem('creatyxo_difficulty_mode')
+        ? localStorage.getItem('klick_difficulty_mode')
         : null;
     const savedMode = (raw === 'chill' ? 'easy' : raw) as DifficultyModeId | null;
     const bootMode = savedMode && savedMode in DIFFICULTY_MODES ? savedMode : 'classic';
@@ -334,7 +334,7 @@ export default function App() {
   const [score, setScore] = useState<number>(0);
   const [bestScore, setBestScore] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_best_score');
+      const saved = localStorage.getItem('klick_best_score');
       return saved ? parseInt(saved, 10) || 0 : 0;
     }
     return 0;
@@ -347,12 +347,12 @@ export default function App() {
       extreme: 0,
     };
     if (typeof window !== 'undefined') {
-      const legacyClassic = parseInt(localStorage.getItem('creatyxo_best_score') || '0', 10) || 0;
-      const legacyChill = parseInt(localStorage.getItem('creatyxo_best_score_chill') || '0', 10) || 0;
+      const legacyClassic = parseInt(localStorage.getItem('klick_best_score') || '0', 10) || 0;
+      const legacyChill = parseInt(localStorage.getItem('klick_best_score_chill') || '0', 10) || 0;
       defaults.classic = legacyClassic;
       defaults.easy = legacyChill;
       DIFFICULTY_ORDER.forEach((m) => {
-        const val = parseInt(localStorage.getItem(`creatyxo_best_score_${m}`) || '0', 10) || 0;
+        const val = parseInt(localStorage.getItem(`klick_best_score_${m}`) || '0', 10) || 0;
         defaults[m] = Math.max(defaults[m], val);
       });
     }
@@ -376,7 +376,7 @@ export default function App() {
   // Audio States (Independent Sound FX & Chill Background Music with Loudness Adjustments)
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_sound_enabled');
+      const saved = localStorage.getItem('klick_sound_enabled');
       return saved !== null ? saved === 'true' : true;
     }
     return true;
@@ -385,21 +385,21 @@ export default function App() {
   soundEnabledRef.current = soundEnabled;
   const [musicEnabled, setMusicEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_music_enabled');
+      const saved = localStorage.getItem('klick_music_enabled');
       return saved !== null ? saved === 'true' : true;
     }
     return true;
   });
   const [soundVolume, setSoundVolumeState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_sound_volume');
+      const saved = localStorage.getItem('klick_sound_volume');
       return saved !== null ? Math.max(0, Math.min(1, parseFloat(saved))) : 0.8;
     }
     return 0.8;
   });
   const [musicVolume, setMusicVolumeState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_music_volume');
+      const saved = localStorage.getItem('klick_music_volume');
       return saved !== null ? Math.max(0, Math.min(1, parseFloat(saved))) : 0.8;
     }
     return 0.8;
@@ -407,7 +407,7 @@ export default function App() {
   const [isAudioSettingsOpen, setIsAudioSettingsOpen] = useState<boolean>(false);
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('creatyxo_haptics_enabled');
+      const saved = localStorage.getItem('klick_haptics_enabled');
       return saved !== null ? saved === 'true' : true;
     }
     return true;
@@ -444,13 +444,13 @@ export default function App() {
     if (clamped > 0 && !soundEnabled) {
       setSoundEnabled(true);
       try {
-        localStorage.setItem('creatyxo_sound_enabled', 'true');
+        localStorage.setItem('klick_sound_enabled', 'true');
       } catch {
         // ignore
       }
     }
     try {
-      localStorage.setItem('creatyxo_sound_volume', clamped.toString());
+      localStorage.setItem('klick_sound_volume', clamped.toString());
     } catch {
       // ignore
     }
@@ -464,13 +464,13 @@ export default function App() {
       setMusicEnabled(true);
       setBackgroundMusicEnabled(true);
       try {
-        localStorage.setItem('creatyxo_music_enabled', 'true');
+        localStorage.setItem('klick_music_enabled', 'true');
       } catch {
         // ignore
       }
     }
     try {
-      localStorage.setItem('creatyxo_music_volume', clamped.toString());
+      localStorage.setItem('klick_music_volume', clamped.toString());
     } catch {
       // ignore
     }
@@ -480,7 +480,7 @@ export default function App() {
     setSoundEnabled((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('creatyxo_sound_enabled', next.toString());
+        localStorage.setItem('klick_sound_enabled', next.toString());
       } catch {
         // ignore
       }
@@ -1111,7 +1111,7 @@ export default function App() {
       const next = !prev;
       setBackgroundMusicEnabled(next);
       try {
-        localStorage.setItem('creatyxo_music_enabled', next.toString());
+        localStorage.setItem('klick_music_enabled', next.toString());
       } catch {
         // ignore
       }
@@ -1128,7 +1128,7 @@ export default function App() {
         triggerHaptic('pick', true);
       }
       try {
-        localStorage.setItem('creatyxo_haptics_enabled', next.toString());
+        localStorage.setItem('klick_haptics_enabled', next.toString());
       } catch {
         // ignore
       }
@@ -1146,7 +1146,7 @@ export default function App() {
       });
       setIsNewRecord(true);
       try {
-        localStorage.setItem(`creatyxo_best_score_${difficultyMode}`, score.toString());
+        localStorage.setItem(`klick_best_score_${difficultyMode}`, score.toString());
       } catch {
         // Ignore
       }
@@ -1156,7 +1156,7 @@ export default function App() {
       setBestScore(score);
       bestScoreRef.current = score;
       try {
-        localStorage.setItem('creatyxo_best_score', score.toString());
+        localStorage.setItem('klick_best_score', score.toString());
       } catch {
         // Ignore
       }
@@ -1359,7 +1359,7 @@ export default function App() {
       if (ok) {
         pushToast(
           'FRIEND ADDED',
-          'You are now connected on Creatyxo!',
+          'You are now connected on Klick!',
           '#34d399'
         );
       }
@@ -1543,7 +1543,7 @@ export default function App() {
       }
       setDifficultyMode(newMode);
       try {
-        localStorage.setItem('creatyxo_difficulty_mode', newMode);
+        localStorage.setItem('klick_difficulty_mode', newMode);
       } catch {
         // Ignore
       }
@@ -2511,7 +2511,7 @@ export default function App() {
                     backgroundColor: displayTheme.surfaceBg,
                     borderColor: displayTheme.surfaceBorder,
                   }}
-                  className="btn-creatyxo-icon rounded-xl border text-slate-300 hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm shrink-0"
+                  className="btn-klick-icon rounded-xl border text-slate-300 hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm shrink-0"
                   title="Main Menu"
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -2529,7 +2529,7 @@ export default function App() {
                     onClick={() => setActiveScreen('home')}
                     title="Main Menu"
                   >
-                    CREATYXO
+                    KLICK
                   </h1>
                   <span className="text-[8px] font-bold tracking-[0.16em] text-slate-400 font-['Orbitron',sans-serif] leading-none truncate max-w-full">
                     {boardSize}×{boardSize} • {activeDifficulty.label} •{' '}
@@ -2550,7 +2550,7 @@ export default function App() {
                     backgroundColor: displayTheme.surfaceBg,
                     borderColor: displayTheme.surfaceBorder,
                   }}
-                  className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+                  className="btn-klick-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
                   title="Settings (Music & Sound)"
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -3117,7 +3117,7 @@ export default function App() {
                           setIsThemesOpen(true);
                         }}
                         style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                        className="btn-creatyxo rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                        className="btn-klick rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                       >
                         THEMES
                       </button>
@@ -3128,7 +3128,7 @@ export default function App() {
                           setProgressionModalTab('daily');
                         }}
                         style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                        className="btn-creatyxo rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                        className="btn-klick rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-[10.5px] font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                       >
                         DAILY & AWARDS
                       </button>
@@ -3143,7 +3143,7 @@ export default function App() {
                         color: displayTheme.primaryBtnText,
                         boxShadow: `0 0 16px ${displayTheme.accentGlowRgba}`,
                       }}
-                      className="btn-creatyxo w-full rounded-2xl font-black tracking-wider text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-2xl font-black tracking-wider text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                     >
                       RESUME
                     </button>
@@ -3155,7 +3155,7 @@ export default function App() {
                         openLeaderboard('game');
                       }}
                       style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                     >
                       LEADERBOARD
                     </button>
@@ -3169,7 +3169,7 @@ export default function App() {
                         setActiveScreen('home');
                       }}
                       style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-xl bg-[#141b2e] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                     >
                       HOME SCREEN
                     </button>
@@ -3178,7 +3178,7 @@ export default function App() {
                       type="button"
                       onClick={() => resetGame()}
                       style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#141b2e] border hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-xl bg-[#141b2e] border hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:bg-[#1a253f] active:scale-95 transition-all cursor-pointer"
                     >
                       RESTART
                     </button>
@@ -3261,7 +3261,7 @@ export default function App() {
                         color: displayTheme.primaryBtnText,
                         boxShadow: `0 0 20px ${displayTheme.accentGlowRgba}`,
                       }}
-                      className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                     >
                       PLAY AGAIN
                     </button>
@@ -3273,7 +3273,7 @@ export default function App() {
                         openLeaderboard('game');
                       }}
                       style={{ margin: 0, borderColor: displayTheme.surfaceBorder }}
-                      className="btn-creatyxo w-full rounded-xl bg-[#121828] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-xl bg-[#121828] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                     >
                       LEADERBOARD
                     </button>
@@ -3285,7 +3285,7 @@ export default function App() {
                         setActiveScreen('home');
                       }}
                       style={{ margin: 0 }}
-                      className="btn-creatyxo w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+                      className="btn-klick w-full rounded-xl bg-transparent hover:bg-[#121828] border border-[#1d273f]/60 hover:border-[#1d273f] text-slate-400 hover:text-slate-200 font-bold tracking-wider text-xs font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
                     >
                       MAIN MENU
                     </button>

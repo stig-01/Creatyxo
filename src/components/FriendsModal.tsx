@@ -132,7 +132,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
             onClick={onClose}
             aria-label="Close friends modal"
             style={{ margin: 0 }}
-            className="btn-creatyxo-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
+            className="btn-klick-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
           >
             ✕
           </button>
@@ -155,7 +155,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
                 color: activeTheme.primaryBtnText,
                 boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
               }}
-              className="btn-creatyxo px-5 rounded-xl font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
+              className="btn-klick px-5 rounded-xl font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
             >
               SIGN IN WITH GOOGLE
             </button>
@@ -583,7 +583,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({
             color: activeTheme.primaryBtnText,
             boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
           }}
-          className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all shrink-0"
+          className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all shrink-0"
         >
           CLOSE
         </button>

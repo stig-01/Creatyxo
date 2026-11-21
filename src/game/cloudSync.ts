@@ -45,7 +45,7 @@ export interface CloudAccountSnapshot {
   pendingSync: boolean;
 }
 
-const ACCOUNT_STORAGE_PREFIX = 'creatyxo_account_v2_';
+const ACCOUNT_STORAGE_PREFIX = 'klick_account_v2_';
 
 function storageKeyFor(accountKey: string): string {
   return `${ACCOUNT_STORAGE_PREFIX}${accountKey || 'guest'}`;
@@ -54,9 +54,9 @@ function storageKeyFor(accountKey: string): string {
 export function loadLegacyLocalSnapshot(): Omit<CloudAccountSnapshot, 'accountKey' | 'pendingSync'> | null {
   if (typeof window === 'undefined') return null;
   try {
-    const rawProfile = localStorage.getItem('creatyxo_player_profile');
-    const rawStats = localStorage.getItem('creatyxo_player_stats');
-    const rawBest = localStorage.getItem('creatyxo_best_score');
+    const rawProfile = localStorage.getItem('klick_player_profile');
+    const rawStats = localStorage.getItem('klick_player_stats');
+    const rawBest = localStorage.getItem('klick_best_score');
     if (!rawProfile && !rawStats && !rawBest) return null;
 
     const profile: PlayerProfile = rawProfile
@@ -77,10 +77,10 @@ export function loadLegacyLocalSnapshot(): Omit<CloudAccountSnapshot, 'accountKe
       hard: 0,
       extreme: 0,
     };
-    const legacyChill = parseInt(localStorage.getItem('creatyxo_best_score_chill') || '0', 10) || 0;
+    const legacyChill = parseInt(localStorage.getItem('klick_best_score_chill') || '0', 10) || 0;
     modeBestScores.easy = legacyChill;
     DIFFICULTY_ORDER.forEach((m) => {
-      const val = parseInt(localStorage.getItem(`creatyxo_best_score_${m}`) || '0', 10) || 0;
+      const val = parseInt(localStorage.getItem(`klick_best_score_${m}`) || '0', 10) || 0;
       modeBestScores[m] = Math.max(modeBestScores[m], val);
     });
 
@@ -89,13 +89,13 @@ export function loadLegacyLocalSnapshot(): Omit<CloudAccountSnapshot, 'accountKe
       ...Object.values(modeBestScores)
     );
 
-    const savedTheme = localStorage.getItem('creatyxo_active_theme') as ThemeId | null;
+    const savedTheme = localStorage.getItem('klick_active_theme') as ThemeId | null;
     const activeThemeId: ThemeId =
       savedTheme && savedTheme in GAME_THEMES && isThemeUnlocked(savedTheme, stats.unlockedAchievements)
         ? savedTheme
         : 'cyber-neon';
 
-    const savedSkin = localStorage.getItem('creatyxo_active_block_skin') as BlockSkinId | null;
+    const savedSkin = localStorage.getItem('klick_active_block_skin') as BlockSkinId | null;
     const peakStreak = Math.max(stats.dailyStreak || 1, stats.bestDailyStreak || 1);
     const activeBlockSkinId: BlockSkinId =
       savedSkin && savedSkin in BLOCK_SKINS && isBlockSkinUnlocked(savedSkin, peakStreak, stats.unlockedBlockSkins)
@@ -140,13 +140,13 @@ export function saveLocalAccountSnapshot(snapshot: CloudAccountSnapshot): void {
   try {
     localStorage.setItem(storageKeyFor(snapshot.accountKey), JSON.stringify(snapshot));
     // Also mirror active session values to legacy keys so existing progression readers stay aligned
-    localStorage.setItem('creatyxo_player_profile', JSON.stringify(snapshot.profile));
-    localStorage.setItem('creatyxo_best_score', String(snapshot.bestScore));
+    localStorage.setItem('klick_player_profile', JSON.stringify(snapshot.profile));
+    localStorage.setItem('klick_best_score', String(snapshot.bestScore));
     DIFFICULTY_ORDER.forEach((m) => {
-      localStorage.setItem(`creatyxo_best_score_${m}`, String(snapshot.modeBestScores[m] || 0));
+      localStorage.setItem(`klick_best_score_${m}`, String(snapshot.modeBestScores[m] || 0));
     });
-    localStorage.setItem('creatyxo_active_theme', snapshot.activeThemeId);
-    localStorage.setItem('creatyxo_active_block_skin', snapshot.activeBlockSkinId);
+    localStorage.setItem('klick_active_theme', snapshot.activeThemeId);
+    localStorage.setItem('klick_active_block_skin', snapshot.activeBlockSkinId);
     savePlayerStats(snapshot.stats);
   } catch {
     // ignore storage quota issues

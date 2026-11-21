@@ -103,7 +103,7 @@ export interface LevelInfo {
   progressPercent: number;
 }
 
-const STATS_STORAGE_KEY = 'creatyxo_player_stats';
+const STATS_STORAGE_KEY = 'klick_player_stats';
 
 export function formatDateKeyFromDate(date: Date): string {
   const y = date.getFullYear();

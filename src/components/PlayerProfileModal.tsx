@@ -235,7 +235,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             onClick={onClose}
             aria-label="Close player profile"
             style={{ margin: 0 }}
-            className="btn-creatyxo-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
+            className="btn-klick-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
           >
             ✕
           </button>
@@ -401,7 +401,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 onEditName();
               }}
               style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
-              className="btn-creatyxo w-full rounded-xl bg-[#12192a] hover:bg-[#182238] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
+              className="btn-klick w-full rounded-xl bg-[#12192a] hover:bg-[#182238] border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
             >
               EDIT NAME & PFP
             </button>
@@ -417,7 +417,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 color: activeTheme.accentHex,
                 backgroundColor: activeTheme.surfaceBg,
               }}
-              className="btn-creatyxo w-full rounded-xl border font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer hover:brightness-110 active:scale-95 transition-all"
+              className="btn-klick w-full rounded-xl border font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer hover:brightness-110 active:scale-95 transition-all"
             >
               SIGN IN TO ADD FRIEND
             </button>
@@ -435,7 +435,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       type="button"
                       onClick={() => onRemoveFriendship(relationship.id)}
                       style={{ margin: 0 }}
-                      className="btn-creatyxo rounded-xl bg-[#1a1420] hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
+                      className="btn-klick rounded-xl bg-[#1a1420] hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
                     >
                       REMOVE
                     </button>
@@ -452,7 +452,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                         backgroundColor: activeTheme.primaryBtnBg,
                         color: activeTheme.primaryBtnText,
                       }}
-                      className="btn-creatyxo rounded-xl text-[10px] font-black font-['Orbitron',sans-serif] tracking-wider cursor-pointer"
+                      className="btn-klick rounded-xl text-[10px] font-black font-['Orbitron',sans-serif] tracking-wider cursor-pointer"
                     >
                       ACCEPT FRIEND
                     </button>
@@ -462,7 +462,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       type="button"
                       onClick={() => onDeclineFriendRequest(relationship.id)}
                       style={{ margin: 0 }}
-                      className="btn-creatyxo rounded-xl bg-[#1b1523] border border-rose-500/30 text-rose-300 text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
+                      className="btn-klick rounded-xl bg-[#1b1523] border border-rose-500/30 text-rose-300 text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
                     >
                       DECLINE
                     </button>
@@ -478,7 +478,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       type="button"
                       onClick={() => onRemoveFriendship(relationship.id)}
                       style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
-                      className="btn-creatyxo rounded-xl bg-[#141c2e] border text-slate-300 hover:text-white text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
+                      className="btn-klick rounded-xl bg-[#141c2e] border text-slate-300 hover:text-white text-[10px] font-bold font-['Orbitron',sans-serif] cursor-pointer"
                     >
                       CANCEL
                     </button>
@@ -495,7 +495,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       color: activeTheme.accentHex,
                       backgroundColor: activeTheme.surfaceBg,
                     }}
-                    className="btn-creatyxo w-full rounded-xl border font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer hover:brightness-110 active:scale-95 transition-all"
+                    className="btn-klick w-full rounded-xl border font-black tracking-wider text-xs font-['Orbitron',sans-serif] cursor-pointer hover:brightness-110 active:scale-95 transition-all"
                   >
                     + SEND FRIEND REQUEST
                   </button>
@@ -513,7 +513,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               color: activeTheme.primaryBtnText,
               boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
             }}
-            className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
+            className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer active:scale-95 transition-all"
           >
             CLOSE PROFILE
           </button>

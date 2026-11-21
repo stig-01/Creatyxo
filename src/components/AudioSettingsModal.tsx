@@ -115,7 +115,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             onClick={onClose}
             aria-label="Close audio settings"
             style={{ margin: 0 }}
-            className="btn-creatyxo-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
+            className="btn-klick-icon rounded-xl bg-[#141d2f] hover:bg-[#1a263d] border border-[#22304d] text-slate-400 hover:text-white transition-colors cursor-pointer text-xs font-bold shrink-0"
           >
             ✕
           </button>
@@ -150,7 +150,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 borderColor: musicEnabled ? activeTheme.accentHex : '#25324b',
                 color: musicEnabled ? activeTheme.accentHex : '#64748b',
               }}
-              className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer"
+              className="btn-klick text-xs font-bold rounded-xl border transition-colors cursor-pointer"
             >
               {musicEnabled ? 'ACTIVE' : 'MUTED'}
             </button>
@@ -206,7 +206,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 borderColor: soundEnabled ? activeTheme.accentHex : '#25324b',
                 color: soundEnabled ? activeTheme.accentHex : '#64748b',
               }}
-              className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer"
+              className="btn-klick text-xs font-bold rounded-xl border transition-colors cursor-pointer"
             >
               {soundEnabled ? 'ACTIVE' : 'MUTED'}
             </button>
@@ -266,7 +266,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               borderColor: hapticsEnabled ? activeTheme.accentHex : '#25324b',
               color: hapticsEnabled ? activeTheme.accentHex : '#64748b',
             }}
-            className="btn-creatyxo text-xs font-bold rounded-xl border transition-colors cursor-pointer shrink-0"
+            className="btn-klick text-xs font-bold rounded-xl border transition-colors cursor-pointer shrink-0"
           >
             {hapticsEnabled ? 'ACTIVE' : 'OFF'}
           </button>
@@ -278,7 +278,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             type="button"
             onClick={() => handleSetPreset('mute')}
             style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
-            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
+            className="btn-klick rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             MUTE ALL
           </button>
@@ -286,7 +286,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             type="button"
             onClick={() => handleSetPreset('balanced')}
             style={{ margin: 0, borderColor: activeTheme.surfaceBorder }}
-            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-300 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
+            className="btn-klick rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold text-slate-300 hover:text-white font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             60% CHILL
           </button>
@@ -298,7 +298,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               borderColor: activeTheme.surfaceBorder,
               color: activeTheme.accentHex,
             }}
-            className="btn-creatyxo rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold font-['Orbitron',sans-serif] transition-all cursor-pointer"
+            className="btn-klick rounded-xl bg-[#141b2a] hover:bg-[#192236] border text-[10px] sm:text-xs font-bold font-['Orbitron',sans-serif] transition-all cursor-pointer"
           >
             100% MAX
           </button>
@@ -314,7 +314,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             color: activeTheme.primaryBtnText,
             boxShadow: `0 0 18px ${activeTheme.accentGlowRgba}`,
           }}
-          className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer mt-1 active:scale-95 transition-all"
+          className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] cursor-pointer mt-1 active:scale-95 transition-all"
         >
           CONFIRM & CLOSE
         </button>

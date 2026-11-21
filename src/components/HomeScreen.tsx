@@ -82,7 +82,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
-          className="btn-creatyxo rounded-xl border transition-all cursor-pointer group active:scale-95 shadow-sm gap-2.5 flex-1 min-w-0 justify-start px-2.5 py-2"
+          className="btn-klick rounded-xl border transition-all cursor-pointer group active:scale-95 shadow-sm gap-2.5 flex-1 min-w-0 justify-start px-2.5 py-2"
           title="View Player Profile & Stats"
         >
           <PlayerAvatar
@@ -142,7 +142,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
+            className="btn-klick-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
             aria-label="Edit player name and profile picture"
             title="Edit Name & PFP"
           >
@@ -158,7 +158,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               backgroundColor: activeTheme.surfaceBg,
               borderColor: activeTheme.surfaceBorder,
             }}
-            className="btn-creatyxo-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
+            className="btn-klick-icon rounded-xl border text-slate-400 hover:text-white cursor-pointer active:scale-95 transition-all shadow-sm shrink-0 p-2"
             aria-label="Settings, Sound & Music"
             title="Settings (Music & Sound)"
           >
@@ -180,7 +180,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             }}
             className="text-3xl sm:text-4xl font-black font-['Black_Ops_One',sans-serif] tracking-wider leading-none text-center"
           >
-            CREATYXO
+            KLICK
           </h1>
           <p className="text-[9.5px] font-bold tracking-[0.26em] text-slate-400 font-['Orbitron',sans-serif] uppercase leading-normal text-center">
             BLOCK PUZZLE
@@ -418,7 +418,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             color: activeTheme.primaryBtnText,
             boxShadow: `0 0 24px ${activeTheme.accentGlowRgba}`,
           }}
-          className="btn-creatyxo w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
+          className="btn-klick w-full rounded-2xl font-black tracking-widest text-xs sm:text-sm font-['Orbitron',sans-serif] active:scale-95 transition-all cursor-pointer"
         >
           JUMP INTO THE GAME
         </button>
@@ -431,7 +431,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             backgroundColor: activeTheme.surfaceBg,
             borderColor: activeTheme.surfaceBorder,
           }}
-          className="btn-creatyxo w-full rounded-xl border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+          className="btn-klick w-full rounded-xl border text-slate-200 hover:text-white font-bold tracking-wider text-xs font-['Orbitron',sans-serif] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
         >
           LEADERBOARD
         </button>

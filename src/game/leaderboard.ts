@@ -102,8 +102,8 @@ export function getTierBadgeStyle(tier: LeaderboardEntry['tier']): {
   }
 }
 
-const LEADERBOARD_CACHE_STORAGE_KEY = 'creatyxo_confirmed_leaderboard';
-const GUEST_ID_STORAGE_KEY = 'creatyxo_player_id';
+const LEADERBOARD_CACHE_STORAGE_KEY = 'klick_confirmed_leaderboard';
+const GUEST_ID_STORAGE_KEY = 'klick_player_id';
 const LEADERBOARD_CACHE_TTL_MS = 60_000;
 
 export function getGuestPlayerId(): string {
